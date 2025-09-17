@@ -16,7 +16,7 @@ This guide walks you through setting up and running the Django development serve
 ## ⚙️ Setup Instructions
 
 ### 1. Clone the Repository 
-### 2. Acttivate Enviorment using the provided shell script to activate your environment 
+### 2. Activate Enviorment using the provided shell script to activate your environment 
 source activate.sh
 ### 3. Install Dependencies
 pip install -r requirements.txt
