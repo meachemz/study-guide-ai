@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content=""width=device-width, initial-scale="1.0">
+        <title>Welcome |  SmartStudy</title>
+        <Style>
+            body {
+                margin: 0;
+                font-family: "Segoe UI", Times New Roman;
+                background: linear-gradient(135deg, #3b82f6, #9333ea);
+                color: #fff;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+            }
+            header {
+                margin-bottom: 30px;
+                text-align: center;
+            }
+            header img {
+                width: 80px;
+                margin-bottom: 10px;
+            }
+            header h1 {
+                margin: 0;
+                font-size: 2.2em;
+            }
+            header p {
+                margin: 5px 0 0;
+                font-size: 1em;
+                color: #e0e0e0;
+            }
+            .menu-container {
+                display: flex;
+                gap: 30px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .card {
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 15px;
+                padding: 30px 25px;
+                text-align: center;
+                width: 250px;
+                transition: transfrom 0.25s ease, background 0.25s ease;
+                cursor: pointer;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+            }
+            .card:hover{
+                transform: translateY(-8px);
+                background: rgba(255, 255, 255, 0.15);
+            }
+            .card h2 {
+                margin:15px 0 10px;
+                font-size: 1.5em;
+            }
+            .card p {
+                font-size: 0.9em;
+                color: #e0e0e0;
+            }
+           .card input {
+                width: 100%;
+                padding: 12px;
+                border-radius: 8px;
+                border: none;
+                margin-top: 15px;
+                font-size: 1em;
+                box-sizing: border-box;   
+                display: block;           
+            }
+            .btn {
+                margin-top: 15px;
+                display: block;
+                width: 100%;
+                padding: 12px;
+                border: none;
+                border-radius: 8px;
+                font-size: 1em;
+                font-weight: bold;
+                cursor: pointer;
+                transition: background 0.3s ease;
+            }
+            .btn-student {
+                background: #22c55e;
+                color: white;
+            }
+            .btn-student:hover {
+                background: #16a34a;
+            }
+            .btn-teacher {
+                background: #facc15;
+                color: black;
+            }
+            .btn-teacher:hover {
+                background: #eab308;
+            }
+        </Style>
+    </head>
+    <body>
+        <header>
+            <!-- Logo area-->
+             <img src = "https://img.icons8.com/fluency/96/graduation-cap.png" alt="Logo">
+             <h1>Smartstudy Portal</h1>
+             <p>Choose your path to continue</p>
+        </header>
+
+        <div class="menu-container">
+            <!-- Student Card -->
+            <div class="card">
+                <img src="https://img.icons8.com/ios-filled/64/22c55e/student-center.png" alt="Student Icon">
+                <h2>Student Access</h2>
+                <p> Enter your access code to unlock your personalized study guide.</p>
+                
+                <form id="student-access-form">
+                    <input id="access-code-input" type="text" placeholder="Enter Access Code" required>
+                    <button type="submit" class="btn btn-student">Access Study Guide</button>
+                </form>
+            </div>
+
+            <script>
+                document.getElementById('student-access-form').addEventListener('submit', function(event) {
+                    // Prevent the form from doing a traditional page reload
+                    event.preventDefault(); 
+                    
+                    // Get the access code from the input field
+                    const accessCode = document.getElementById('access-code-input').value.trim().toUpperCase();
+                    
+                    // Redirect the browser to the correct quiz URL
+                    if (accessCode) {
+                        window.location.href = `/quiz/${accessCode}/`;
+                    }
+                });
+            </script>
+
+                  <!-- Teacher / Researcher Card -->
+                <div class="card">
+                <img src="https://img.icons8.com/ios-filled/64/facc15/teacher.png" alt="Teacher Icon">
+                <h2>Teacher / Researcher</h2>
+                <p>Login to manage classes, data, and study guides.</p>
+                <a href="{% url 'accounts:login' %}" style="text-decoration: none;">
+                    <button class="btn btn-teacher">Go to login</button>
+                </a>
+                </div>
+        </div>
+    </body>
+    </html>

@@ -19,7 +19,9 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('quiz/', include("quiz_app.urls")),
     path('login/', include("accounts.urls")),
+    path('quiz/', include("quiz_app.urls")),
 
+    # The general "catch-all" path for your home page comes LAST
+    path('', include('pages.urls')),
 ]

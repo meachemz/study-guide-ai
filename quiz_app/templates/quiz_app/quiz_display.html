@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>{{ quiz.title }} | SmartStudy</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background: linear-gradient(135deg, #3b82f6, #9333ea);
+            color: #fff;
+            padding: 1rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 2rem 1rem;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+        }
+
+        main, .user-info-container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .user-info-container {
+            margin-bottom: 2rem;
+        }
+        .user-info-container h2 {
+            margin-top: 0;
+            text-align: center;
+        }
+        .user-info-container div {
+            margin-bottom: 1rem;
+        }
+        .user-info-container label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        .user-info-container input {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        .question {
+            margin-bottom: 2rem;
+        }
+
+        .question h2 {
+            margin-bottom: 0.75rem;
+        }
+
+        .answers {
+            list-style: none;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .answer {
+            padding: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 6px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            transition: background 0.2s;
+        }
+
+        .answer:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .answer.selected {
+            background: #22c55e;
+            color: white;
+            border-color: #16a34a;
+        }
+
+        .controls {
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        button {
+            padding: 0.8rem 2rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: bold;
+            background: #facc15;
+            color: #111;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #eab308;
+        }
+
+        #confirmation {
+            background: white;
+            color: #333;
+            padding: 2rem;
+            border-radius: 8px;
+            text-align: center;
+            display: none; /* Hidden by default */
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>{{ quiz.title }}</h1>
+    </header>
+
+    <div id="userInfo" class="user-info-container">
+        <h2>Enter Your Information</h2>
+        <div>
+            <label for="studentName">Name:</label>
+            <input type="text" id="studentName" placeholder="Your Name" required>
+        </div>
+        <div>
+            <label for="studentEmail">Email:</label>
+            <input type="email" id="studentEmail" placeholder="Your Email" required>
+        </div>
+    </div>
+
+    <main id="quizContainer"></main>
+
+    <div class="controls">
+        <button id="submitBtn">Submit</button>
+    </div>
+
+    <div id="confirmation">
+        <h2>✅ Thank you for submitting!</h2>
+        <p>Your answers have been recorded.</p>
+    </div>
+</div>
+
+{{ questions_for_js|json_script:"quiz-data" }}
+
+<script>
+    // 1. LOAD DATA FROM DJANGO
+    const quizDataElem = document.getElementById('quiz-data');
+    const questions = JSON.parse(quizDataElem.textContent);
+    const quizContainer = document.getElementById("quizContainer");
+
+    // 2. BUILD THE QUIZ HTML FROM THE DATA
+    questions.forEach((q, index) => {
+        const section = document.createElement("section");
+        section.className = "question";
+        section.id = `q${index}`;
+
+        section.innerHTML = `
+            <h2>${index + 1}. ${q.text}</h2>
+            <ul class="answers">
+                ${q.answers.map(ans => `<li class="answer" data-answer="${ans}">${ans}</li>`).join("")}
+            </ul>
+        `;
+        quizContainer.appendChild(section);
+    });
+
+    // 3. HANDLE ANSWER SELECTION
+    quizContainer.addEventListener("click", e => {
+        if (e.target.classList.contains("answer")) {
+            const answersList = e.target.closest(".answers");
+            answersList.querySelectorAll(".answer").forEach(a => a.classList.remove("selected"));
+            e.target.classList.add("selected");
+        }
+    });
+
+    // 4. HANDLE QUIZ SUBMISSION
+    document.getElementById("submitBtn").addEventListener("click", () => {
+        // Get User Info
+        const name = document.getElementById('studentName').value.trim();
+        const email = document.getElementById('studentEmail').value.trim();
+
+        if (!name || !email) {
+            alert('Please enter your name and email.');
+            return;
+        }
+
+        // Get All Selected Answers
+        const answers = {};
+        const questionElements = quizContainer.querySelectorAll('.question');
+        questionElements.forEach((qElement, index) => {
+            const selectedAnswer = qElement.querySelector('.answer.selected');
+            if (selectedAnswer) {
+                answers[index] = selectedAnswer.dataset.answer;
+            }
+        });
+
+        if (Object.keys(answers).length !== questions.length) {
+            alert('Please answer all questions before submitting.');
+            return;
+        }
+
+        // Prepare Data to Send to Django
+        const submissionData = {
+            access_code: '{{ quiz.access_code }}',
+            name: name,
+            email: email,
+            answers: answers
+        };
+
+        // Send Data to Django using fetch
+        fetch('/quiz/submit/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // Important: Django's security token
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(submissionData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Hide the quiz and show the confirmation message
+                document.getElementById("userInfo").style.display = "none";
+                document.querySelector("main").style.display = "none";
+                document.querySelector(".controls").style.display = "none";
+                document.getElementById("confirmation").style.display = "block";
+            } else {
+                alert('There was an error submitting your quiz: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Submission Error:', error);
+            alert('A network error occurred. Please try again.');
+        });
+    });
+</script>
+
+</body>
+</html>
