@@ -14,14 +14,22 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+# In your_project/urls.py
+
+
 from django.contrib import admin
 from django.urls import path, include
+# Make sure to import the views from your quiz_app
+from quiz_app import views as quiz_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('login/', include("accounts.urls")),
-    path('quiz/', include("quiz_app.urls")),
 
-    # The general "catch-all" path for your home page comes LAST
+    # The main URL for your dashboard
+    path('dashboard/', quiz_views.teacher_dashboard_view, name='teacher_dashboard'),
+
+    # Include your other apps
+    path('quiz/', include("quiz_app.urls")),
+    path('accounts/', include("accounts.urls")),
     path('', include('pages.urls')),
 ]

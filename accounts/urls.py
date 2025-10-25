@@ -1,9 +1,11 @@
-from django.urls import path,include
+# In accounts/urls.py
+
+from django.urls import path
 from . import views
 
-app_name = 'accounts'  
-urlpatterns = [
-    path('', views.login_view, name='login'),
-    path('dashboard/', views.dashboard_view, name='dashboard'),
+app_name = 'accounts'
 
+urlpatterns = [
+    path('login/', views.login_view, name='login'),
+    path('dashboard/', views.dashboard_view, name='dashboard'),
 ]

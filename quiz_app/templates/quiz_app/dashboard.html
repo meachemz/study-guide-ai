@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SmartStudy · Teacher Dashboard</title>
+<style>
+  :root{
+    --bg:#f6f8ff;
+    --card:#ffffff;
+    --ink:#0f172a;
+    --muted:#64748b;
+    --line:#e6e8f2;
+    --brand1:#3b82f6;   /* blue   */
+    --brand2:#9333ea;   /* purple */
+    --accent:#22c55e;   /* green  */
+    --warn:#f59e0b;
+    --danger:#ef4444;
+    --br:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:system-ui,-apple-system,Segoe UI,Inter,Arial,sans-serif;
+    color:var(--ink);
+    background:linear-gradient(135deg,var(--brand1),var(--brand2)) fixed;
+    display:grid;
+    grid-template-columns:260px 1fr;
+    grid-template-rows:auto 1fr;
+    grid-template-areas:"side head" "side main";
+  }
+
+  /* Sidebar */
+  aside{
+    grid-area:side;
+    background:rgba(255,255,255,.12);
+    backdrop-filter: blur(8px);
+    color:#eef2ff;
+    padding:14px;
+    border-right:1px solid rgba(255,255,255,.15);
+  }
+  .brand{
+    display:flex; align-items:center; gap:.75rem; padding:10px 8px; margin-bottom:8px;
+  }
+  .badge{
+    width:40px;height:40px;border-radius:12px;
+    display:grid;place-items:center;
+    background:linear-gradient(135deg,#60a5fa,#a78bfa);
+    color:#fff; font-weight:800;
+  }
+  .brand h3{margin:0; font-weight:800}
+  .tagline{margin:0 0 8px; font-size:.85rem; opacity:.9}
+  nav a{
+    display:flex; align-items:center; gap:.6rem;
+    padding:10px 12px; margin:6px 0;
+    border-radius:10px; color:#eef2ff; text-decoration:none;
+    transition:background .15s;
+  }
+  nav a.active, nav a:hover{background:rgba(255,255,255,.18)}
+
+  /* Header */
+  header{
+    grid-area:head;
+    background:var(--card);
+    border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px;
+  }
+  .search{display:flex; gap:10px}
+  .search input{padding:10px 12px; border:1px solid var(--line); border-radius:10px; min-width:260px}
+  .btn{
+    border:0; padding:10px 14px; border-radius:10px; font-weight:700;
+    color:#fff; cursor:pointer; background:linear-gradient(135deg,var(--brand1),var(--brand2));
+  }
+  .btn.ghost{background:#111827; color:#fff}
+  .btn.small{padding:7px 10px; font-weight:600}
+  .btn.red{background:var(--danger)}
+  .btn.green{background:var(--accent)}
+  .chip{padding:6px 9px; border-radius:999px; background:#eef2ff; color:#334155; font-size:.8rem}
+
+  /* Main */
+  main{grid-area:main; padding:18px; background:var(--bg); overflow:auto}
+  .wrap{max-width:1100px; margin:0 auto}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--br); box-shadow:0 8px 28px rgba(15,23,42,.06); padding:16px}
+  h2{margin:0 0 10px}
+  h3{margin:0 0 8px}
+
+  /* Grid helpers */
+  .grid{display:grid; gap:16px}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:980px){ .cols-2,.cols-3{grid-template-columns:1fr} }
+
+  /* Table */
+  table{width:100%; border-collapse:collapse}
+  th,td{padding:10px 8px; border-bottom:1px solid #eef1f7; text-align:left; font-size:.95rem}
+  th{color:var(--muted); font-weight:700}
+
+  /* Inputs */
+  .field{display:grid; gap:6px; margin:10px 0}
+  .field input,.field select,.field textarea{
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#fff;
+  }
+  .muted{color:var(--muted); font-size:.95rem}
+
+  /* Tabs in Create Quiz */
+  .tabs{display:flex; gap:8px; margin-bottom:10px}
+  .tab{padding:9px 12px; border-radius:10px; background:#eef2ff; color:#334155; cursor:pointer; font-weight:600}
+  .tab.active{background:linear-gradient(135deg,var(--brand1),var(--brand2)); color:#fff}
+  .hidden{display:none}
+
+  /* Toast */
+  .toast{
+    position:fixed; right:16px; bottom:16px; padding:12px 14px; border-radius:10px;
+    color:#0f172a; background:#f0fdf4; border:1px solid #bbf7d0; box-shadow:0 8px 24px rgba(0,0,0,.1);
+    display:none;
+  }
+
+  /* Mobile layout */
+  @media(max-width:820px){
+    body{grid-template-columns:1fr; grid-template-rows:auto auto 1fr; grid-template-areas:"head" "side" "main"}
+    aside{border-right:0; border-bottom:1px solid rgba(255,255,255,.15); border-radius:0 0 16px 16px}
+  }
+</style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside>
+    <div class="brand">
+      <div class="badge">BF</div>
+      <div>
+        <h3>SmartStudy</h3>
+        <div class="tagline">The Bias Four</div>
+      </div>
+    </div>
+    <nav>
+      <a href="#" class="active" onclick="show('overview',this)">Overview</a>
+      <a href="#" onclick="show('create',this)">Create Quiz</a>
+      <a href="#" onclick="show('mine',this)">My Quizzes</a>
+      <a href="#" onclick="show('results',this)">Results</a>
+      <a href="#" onclick="show('settings',this)">Settings</a>
+    </nav>
+  </aside>
+
+  <!-- Header -->
+  <header>
+    <div class="search">
+      <input id="search" type="text" placeholder="Search quizzes or students…" oninput="searchAll(this.value)" />
+      <button class="btn small" onclick="document.getElementById('create-anchor').scrollIntoView({behavior:'smooth'}); show('create')">+ New Quiz</button>
+    </div>
+    <div class="chip">Admin · Teacher / Researcher</div>
+  </header>
+
+  <!-- Main -->
+  <main>
+    <div class="wrap grid cols-2">
+
+      <!-- LEFT COLUMN -->
+      <section class="grid" style="gap:16px">
+
+        <!-- OVERVIEW -->
+        <div id="panel-overview" class="card">
+          <h2>Welcome</h2>
+          <p class="muted">Create a quiz (manually or by choosing topics for AI to generate it), get an <strong>Access Code</strong>, and share it with students on the landing page. Submissions and timing will appear under <em>Results</em>.</p>
+          <div class="grid cols-3" style="margin-top:10px">
+            <div class="card" style="padding:12px">
+              <div class="muted">Quizzes</div>
+              <h3 id="stat-quizzes">0</h3>
+            </div>
+            <div class="card" style="padding:12px">
+              <div class="muted">Responses</div>
+              <h3 id="stat-responses">0</h3>
+            </div>
+            <div class="card" style="padding:12px">
+              <div class="muted">Avg. Mastery (demo)</div>
+              <h3>—</h3>
+            </div>
+          </div>
+        </div>
+
+        <!-- MY QUIZZES -->
+        <div id="panel-mine" class="card hidden">
+          <h2>My Quizzes</h2>
+          <table>
+            <thead>
+              <tr><th>Title</th><th>Code</th><th>Created</th><th>Questions</th><th>Responses</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="tbl-quizzes"></tbody>
+          </table>
+        </div>
+
+        <!-- RESULTS -->
+        <div id="panel-results" class="card hidden">
+          <h2>Results</h2>
+          <p class="muted">When students submit a quiz, their name, score, time, and study-guide status appear here.</p>
+          <table>
+            <thead>
+              <tr><th>Student</th><th>Quiz Title</th><th>Code</th><th>Score</th><th>Time Taken</th><th>Study Guide</th></tr>
+            </thead>
+            <tbody id="tbl-results"></tbody>
+          </table>
+        </div>
+
+        <!-- SETTINGS -->
+        <div id="panel-settings" class="card hidden">
+          <h2>Settings</h2>
+          <div class="grid cols-2">
+            <div>
+              <h3>Profile</h3>
+              <div class="field"><label>Display Name</label><input id="profile-name" placeholder="e.g., Mrs. Garcia"></div>
+              <div class="field"><label>Email</label><input id="profile-email" placeholder="teacher@example.com"></div>
+              <button class="btn small" onclick="saveProfile()">Save Profile</button>
+            </div>
+            <div>
+              <h3>Security</h3>
+              <div class="field"><label>New Username</label><input id="set-username" placeholder="optional"></div>
+              <div class="field"><label>New Password</label><input id="set-password" type="password" placeholder="optional"></div>
+              <button class="btn small" onclick="fakeReset()">Update Credentials</button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- RIGHT COLUMN -->
+      <section id="create-anchor" class="card">
+        <h2>Create Quiz</h2>
+
+        <!-- tabs -->
+        <div class="tabs" role="tablist">
+          <div class="tab active" role="tab" aria-selected="true" onclick="switchCreate('ai')">AI-Assisted</div>
+          <div class="tab" role="tab" aria-selected="false" onclick="switchCreate('manual')">Manual Builder</div>
+        </div>
+
+        <!-- AI create -->
+        <div id="create-ai">
+          <p class="muted">Pick a subject & subtopic. Click <strong>Generate with AI</strong>. We’ll save a placeholder quiz with an access code. Your teammate will wire this button to Gemini later.</p>
+          <div class="grid cols-2">
+            <div class="field">
+              <label>Subject</label>
+              <select id="ai-subject" onchange="fillSubtopics()">
+                <option value="Math">Math</option>
+                <option value="Biology">Biology</option>
+                <option value="History">History</option>
+                <option value="English">English</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Subtopic</label>
+              <select id="ai-subtopic"></select>
+            </div>
+          </div>
+          <div class="grid cols-3">
+            <div class="field">
+              <label>Difficulty</label>
+              <select id="ai-diff">
+                <option>Easy</option><option>Medium</option><option>Hard</option>
+              </select>
+            </div>
+            <div class="field">
+              <label># of Questions</label>
+              <select id="ai-count">
+                <option>5</option><option>10</option><option>15</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="btn green" onclick="generateWithAI()">Generate with AI</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manual create -->
+        <div id="create-manual" class="hidden">
+          <div class="field"><label>Quiz Title</label><input id="q-title" placeholder="e.g., Algebra • Quadratics Check-In"></div>
+
+          <div id="q-list"></div>
+          <div style="display:flex; gap:8px; margin:10px 0">
+            <button class="btn small" onclick="addQuestion()">+ Add Question</button>
+            <button class="btn green small" onclick="saveManual()">Save & Get Access Code</button>
+          </div>
+          <p class="muted">Tip: after saving, your quiz appears in <em>My Quizzes</em>. Use “Copy Code” to share with students.</p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+<script>
+/* ---------- UTILITIES (with Django helpers) ---------- */
+function toast(msg, isError = false){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.borderColor = isError ? 'var(--warn)' : '#bbf7d0';
+  el.style.background = isError ? '#fffbeb' : '#f0fdf4';
+  el.style.display='block';
+  setTimeout(()=>el.style.display='none', 2500);
+}
+
+// Helper to get Django's CSRF token for secure POST requests
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+const csrftoken = getCookie('csrftoken');
+
+/* ---------- NAVIGATION ---------- */
+function show(name, link){
+  // This function remains the same as your version
+  const panels = ['overview', 'mine', 'results', 'settings'];
+  panels.forEach(p => {
+    const panel = document.getElementById('panel-' + p);
+    if (panel) panel.classList.add('hidden');
+  });
+  const activePanel = document.getElementById('panel-' + name);
+  if (activePanel) activePanel.classList.remove('hidden');
+  document.querySelectorAll('aside nav a').forEach(a => a.classList.remove('active'));
+  if(link) link.classList.add('active');
+}
+
+/* ---------- DATA FETCHING & RENDERING (from Django) ---------- */
+async function refresh(){
+  try {
+    const response = await fetch('/quiz/api/dashboard-data/');
+    if(!response.ok) throw new Error('Network response was not ok');
+    const data = await response.json();
+    const { quizzes, results } = data;
+
+    document.getElementById('stat-quizzes').textContent = quizzes.length;
+    document.getElementById('stat-responses').textContent = results.length;
+
+    const byCodeCount = results.reduce((m,r)=>{ m[r.quiz_code]=(m[r.quiz_code]||0)+1; return m; },{});
+    const quizTbody = document.getElementById('tbl-quizzes');
+    quizTbody.innerHTML = quizzes.length > 0 ? '' : '<tr><td colspan="6" class="muted">No quizzes yet.</td></tr>';
+    quizzes.forEach(q => {
+      const tr = document.createElement('tr');
+      tr.dataset.search = `${q.title} ${q.code}`.toLowerCase();
+      tr.innerHTML = `
+        <td>${q.title}</td>
+        <td><code>${q.code}</code></td>
+        <td>${new Date(q.created_at).toLocaleDateString()}</td>
+        <td>${q.question_count}</td>
+        <td>${byCodeCount[q.code] || 0}</td>
+        <td>
+          <button class="btn small" onclick="copyCode('${q.code}')">Copy Code</button>
+          <button class="btn red small" onclick="delQuiz('${q.code}')">Delete</button>
+        </td>`;
+      quizTbody.appendChild(tr);
+    });
+
+    const resultsTbody = document.getElementById('tbl-results');
+    resultsTbody.innerHTML = results.length > 0 ? '' : '<tr><td colspan="6" class="muted">No results yet.</td></tr>';
+    results.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.dataset.search = `${r.student_name} ${r.quiz_title} ${r.quiz_code}`.toLowerCase();
+      tr.innerHTML = `
+        <td>${r.student_name}</td>
+        <td>${r.quiz_title}</td>
+        <td><code>${r.quiz_code}</code></td>
+        <td>${Math.round((r.score / r.total_questions) * 100)}%</td>
+        <td>${r.time || 'N/A'}</td>
+        <td>${r.study_guide_sent ? '✅ Sent' : '—'}</td>`;
+      resultsTbody.appendChild(tr);
+    });
+
+  } catch (error) {
+    console.error("Failed to refresh data:", error);
+    toast("Could not load data from the server.", true);
+  }
+}
+
+function searchAll(txt){
+  txt = (txt || '').toLowerCase();
+  document.querySelectorAll('#tbl-quizzes tr, #tbl-results tr').forEach(tr => {
+    tr.style.display = (tr.dataset.search || '').includes(txt) ? '' : 'none';
+  });
+}
+
+function copyCode(c){
+  navigator.clipboard.writeText(c);
+  toast('Access code copied: '+c);
+}
+
+async function delQuiz(code){
+  if(!confirm('Delete this quiz? This action cannot be undone.')) return;
+  try {
+    const response = await fetch(`/quiz/api/quiz/delete/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ code: code })
+    });
+    const data = await response.json();
+    if (data.status !== 'success') throw new Error(data.message);
+    
+    refresh();
+    toast('Quiz deleted');
+  } catch (error) {
+    console.error("Delete failed:", error);
+    toast("Error deleting quiz.", true);
+  }
+}
+
+/* ---------- AI ASSISTED ---------- */
+const SUBTOPICS = {
+  Math:['Algebra','Geometry','Trigonometry','Probability'],
+  Biology:['Cell Structure','Genetics','Human Body','Ecology'],
+  History:['US History','World Wars','Civics','Ancient'],
+  English:['Grammar','Reading Comp.','Vocabulary','Writing']
+};
+function fillSubtopics(){
+  const subjEl = document.getElementById('ai-subject');
+  if (!subjEl) return;
+  const subj = subjEl.value;
+  const sel  = document.getElementById('ai-subtopic');
+  sel.innerHTML = (SUBTOPICS[subj] || []).map(s=>`<option>${s}</option>`).join('');
+}
+
+async function generateWithAI(){
+  const button = event.target;
+  button.disabled = true;
+  button.textContent = 'Generating...';
+  const payload = {
+    subject: document.getElementById('ai-subject').value,
+    subtopic: document.getElementById('ai-subtopic').value,
+    difficulty: document.getElementById('ai-diff').value,
+    count: parseInt(document.getElementById('ai-count').value, 10)
+  };
+  try {
+    const response = await fetch('/quiz/api/quiz/generate-ai/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (data.status !== 'success') throw new Error(data.message || 'Unknown error from server.');
+    refresh();
+    toast(`AI quiz created! Access Code: ${data.code}`);
+  } catch (error) {
+    console.error("AI Generation Failed:", error);
+    toast("AI generation failed. Please try again.", true);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate with AI';
+  }
+}
+
+/* ---------- MANUAL BUILDER ---------- */
+let qIndex = 0;
+function addQuestion(){
+  const id = `q-${qIndex++}`;
+  const box = document.createElement('div');
+  box.className='card'; box.style.margin='10px 0'; box.style.padding='12px';
+  box.innerHTML = `
+    <div class="field"><label>Question</label><textarea rows="2" class="q-text" id="${id}-t"></textarea></div>
+    <div class="grid cols-2">
+      <div class="field"><label>Option A</label><input class="q-opt" id="${id}-a"></div>
+      <div class="field"><label>Option B</label><input class="q-opt" id="${id}-b"></div>
+      <div class="field"><label>Option C</label><input class="q-opt" id="${id}-c"></div>
+      <div class="field"><label>Option D</label><input class="q-opt" id="${id}-d"></div>
+    </div>
+    <div class="field">
+      <label>Correct Option</label>
+      <select class="q-ans" id="${id}-ans"><option>A</option><option>B</option><option>C</option><option>D</option></select>
+    </div>`;
+  document.getElementById('q-list').appendChild(box);
+}
+
+function collectQuestions(){
+  const boxes = Array.from(document.querySelectorAll('#q-list .card'));
+  return boxes.map(b => {
+    const text = b.querySelector('.q-text').value.trim();
+    if (!text) return null;
+    const options = Array.from(b.querySelectorAll('.q-opt')).map(i => i.value.trim());
+    const answer = b.querySelector('.q-ans').value;
+    const correctIndex = 'ABCD'.indexOf(answer);
+    return { q: text, options, correctIndex };
+  }).filter(Boolean); // Filter out null (empty) questions
+}
+
+async function saveManual(){
+  const title = document.getElementById('q-title').value.trim();
+  if(!title){ toast('Add a quiz title', true); return; }
+  const questions = collectQuestions();
+  if(questions.length === 0){ toast('Add at least one complete question', true); return; }
+  const payload = { title, class_name: '', questions };
+  try {
+    const response = await fetch('/quiz/api/quiz/save/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (data.status !== 'success') throw new Error(data.message);
+    document.getElementById('q-title').value='';
+    document.getElementById('q-list').innerHTML='';
+    qIndex = 0;
+    addQuestion(); // Add a fresh blank question
+    refresh();
+    toast('Saved! Access Code: '+data.access_code);
+  } catch (error) {
+    console.error("Save Manual Failed:", error);
+    toast("Could not save quiz.", true);
+  }
+}
+
+/* ---------- TABS & SETTINGS ---------- */
+function switchCreate(which){
+  document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector(`.tabs .tab:nth-child(${which==='ai'?1:2})`).classList.add('active');
+  document.getElementById('create-ai').classList.toggle('hidden', which!=='ai');
+  document.getElementById('create-manual').classList.toggle('hidden', which!=='manual');
+}
+function saveProfile(){ toast('Profile saved (demo only)'); }
+function fakeReset(){ toast('Credentials updated (demo only)'); }
+
+/* ---------- INITIAL PAGE LOAD ---------- */
+document.addEventListener('DOMContentLoaded', () => {
+    fillSubtopics();
+    addQuestion();
+    refresh();
+    show('overview', document.querySelector('aside nav a'));
+});
+</script>
+</body>
+</html>

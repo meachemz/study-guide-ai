@@ -14,7 +14,6 @@
       justify-content: center;
       align-items: center;
     }
-
     .login-wrapper {
       background: #fff;
       padding: 40px 35px;
@@ -23,29 +22,24 @@
       width: 380px;
       text-align: center;
     }
-
     .login-wrapper img {
       width: 60px;
       margin-bottom: 10px;
     }
-
     .login-wrapper h2 {
       margin: 0 0 10px;
       color: #111827;
       font-size: 1.8em;
     }
-
     .login-wrapper p.subtext {
       color: #6b7280;
       margin-bottom: 20px;
       font-size: 0.9em;
     }
-
     .input-group {
       margin-bottom: 15px;
       text-align: left;
     }
-
     .input-group label {
       display: block;
       font-size: 0.9em;
@@ -53,28 +47,23 @@
       color: #374151;
       font-weight: 600;
     }
-
-    input,
-    .btn {
+    input, .btn {
       display: block;
-      width: 100%;  /* ✅ Same width for inputs & button */
+      width: 100%;
       padding: 12px;
       border-radius: 8px;
       font-size: 1em;
-      box-sizing: border-box; /* ✅ Ensures padding doesn’t mess width */
+      box-sizing: border-box;
     }
-
     input {
       border: 1px solid #ccc;
       outline: none;
       transition: border 0.3s ease;
     }
-
     input:focus {
       border: 1px solid #9333ea;
       box-shadow: 0 0 6px rgba(147,51,234,0.4);
     }
-
     .btn {
       border: none;
       background: linear-gradient(135deg, #3b82f6, #9333ea);
@@ -84,19 +73,10 @@
       margin-top: 10px;
       transition: transform 0.2s ease, opacity 0.3s ease;
     }
-
     .btn:hover {
       transform: translateY(-2px);
       opacity: 0.9;
     }
-
-    .error {
-      color: red;
-      font-size: 0.9em;
-      margin-top: 10px;
-      display: none;
-    }
-
     .register-link {
       display: block;
       margin-top: 15px;
@@ -106,7 +86,6 @@
       font-weight: 600;
       text-align: center;
     }
-
     .register-link:hover {
       text-decoration: underline;
     }
@@ -118,37 +97,32 @@
     <h2>Admin Login</h2>
     <p class="subtext">Teachers & Researchers, please log in below</p>
 
-    <div class="input-group">
-      <label for="username">Username</label>
-      <input type="text" id="username" placeholder="Enter your username" required>
-    </div>
+    <form method="POST">
+      {% csrf_token %}
 
-    <div class="input-group">
-      <label for="password">Password</label>
-      <input type="password" id="password" placeholder="Enter your password" required>
-    </div>
+      <div class="input-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" placeholder="Enter your username" required>
+      </div>
 
-    <button class="btn" onclick="login()">Login</button>
-    <p id="errorMsg" class="error">Invalid username or password</p>
+      <div class="input-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="Enter your password" required>
+      </div>
 
-    <a class="register-link" onclick="register()">Don’t have an account? Register here</a>
+      <button class="btn" type="submit">Login</button>
+
+      {% if messages %}
+        <div style="margin-top: 15px;">
+          {% for message in messages %}
+            <p style="color: #ef4444; font-size: 0.9em; margin: 0;">{{ message }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </form>
+    
+    <a class="register-link" href="#">Don’t have an account? Register here</a>
   </div>
 
-  <script>
-    function login() {
-      const user = document.getElementById("username").value;
-      const pass = document.getElementById("password").value;
-
-      if (user === "admin" && pass === "1234") {
-        window.location.href = "dashboard";
-      } else {
-        document.getElementById("errorMsg").style.display = "block";
-      }
-    }
-
-    function register() {
-      alert("Redirect to registration page (to be built).");
-    }
-  </script>
-</body>
+  </body>
 </html>
