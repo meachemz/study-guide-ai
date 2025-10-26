@@ -14,17 +14,56 @@ from django.core.mail import EmailMessage
 from .models import Quiz, Question, Submission
 from django.db.models import Count
 from django.shortcuts import render
+from django.template.loader import render_to_string
+from weasyprint import HTML
 
 
 # --- AI Model Configuration ---
 genai.configure(api_key=settings.GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash-lite')
 
-# --- Helper function for LaTeX ---
-def escape_latex(text):
-    conv = { '&': r'\&', '%': r'\%', '$': r'\$', '#': r'\#', '_': r'\_', '{': r'\{', '}': r'\}', '~': r'\textasciitilde{}', '^': r'\textasciicircum{}', '\\': r'\textbackslash{}'}
-    regex = re.compile('|'.join(re.escape(str(key)) for key in conv.keys()))
-    return regex.sub(lambda match: conv[match.group()], text)
+# --- Helper function to parse AI plain text study guide ---
+# (This is a basic example, you might need a more robust parser)
+def parse_study_guide_text(text):
+    core_topics = ""
+    practice_questions = []
+
+    try:
+        # Find sections (adjust keywords based on your prompt)
+        core_split = re.split(r'\nPractice Questions\n', text, maxsplit=1, flags=re.IGNORECASE)
+        core_text_section = core_split[0]
+        practice_text_section = core_split[1] if len(core_split) > 1 else ""
+
+        # Extract core topics text
+        core_topics = core_text_section.replace('Core Topics Explained\n', '', 1).strip()
+
+        # Extract practice questions (this is complex and needs refinement)
+        # Assuming format like: "1. Question text\nA) Opt1\nB) Opt2\nC) Opt3\nD) Opt4\nCorrect Answer: C"
+        question_blocks = re.split(r'\n(?=\d+\.\s)', practice_text_section.strip()) # Split by lines starting with "Number."
+
+        for block in question_blocks:
+            if not block.strip(): continue
+            lines = block.strip().split('\n')
+            if len(lines) < 6: continue # Need at least question, 4 options, answer
+
+            question_text = lines[0].split('.', 1)[1].strip() # Remove number like "1. "
+            options = [opt[3:].strip() for opt in lines[1:5]] # Remove A) B) C) D)
+            answer_line = lines[5]
+            correct_answer_text = answer_line.replace('Correct Answer:', '').strip()
+
+            practice_questions.append({
+                'text': question_text,
+                'options': options,
+                'correct_answer_text': correct_answer_text
+            })
+
+    except Exception as e:
+        print(f"Error parsing study guide text: {e}")
+        # Fallback: return the raw text if parsing fails
+        core_topics = text
+        practice_questions = []
+
+    return core_topics, practice_questions
 
 def teacher_dashboard_view(request):
     # This view's only job is to render the dashboard template
@@ -157,41 +196,41 @@ def quiz_display_view(request, access_code):
 # In quiz_app/views.py
 
 def submit_quiz_view(request):
-    """
-    Handles a POST request when a student submits their answers.
-    Automatically generates and emails a PDF study guide if any answers are incorrect.
-    """
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request method'}, status=405)
 
     try:
         data = json.loads(request.body)
         quiz = Quiz.objects.get(access_code=data.get('access_code'))
-        
-        # 1. Save submission and calculate score
+        student_name = data.get('name')
+        student_email = data.get('email')
         student_answers = data.get('answers', {})
+
+        # 1. Save submission and calculate score (same as before)
         score = 0
         questions = list(quiz.questions.all())
         for i, question in enumerate(questions):
-            submitted_answer = student_answers.get(str(i))
-            if submitted_answer and submitted_answer == question.options[question.correct_index]:
+            submitted_answer_text = student_answers.get(str(i))
+            # Compare submitted text with the correct option text
+            if submitted_answer_text and submitted_answer_text == question.options[question.correct_index]:
                 score += 1
-        
+
         new_submission = Submission.objects.create(
             quiz=quiz,
-            student_name=data.get('name'),
-            student_email=data.get('email'),
+            student_name=student_name,
+            student_email=student_email,
             answers=student_answers,
             score=score
         )
 
-        # 2. Find incorrect questions to create a study guide
+        # 2. Find incorrect questions (same as before)
         wrong_questions = []
         for i, question in enumerate(questions):
-            if student_answers.get(str(i)) != question.options[question.correct_index]:
-                wrong_questions.append(question)
-        
-        # 3. If there were wrong answers, generate and email the guide
+            submitted_answer_text = student_answers.get(str(i))
+            if submitted_answer_text != question.options[question.correct_index]:
+                 wrong_questions.append(question)
+
+        # 3. If wrong answers, generate guide using AI (same prompt)
         if wrong_questions:
             prompt_text = (
                 f"A student needs a study guide for a '{quiz.title}' quiz. "
@@ -202,46 +241,59 @@ def submit_quiz_view(request):
             prompt_text += (
                 "\nPlease generate a study guide with two distinct sections:\n\n"
                 "1. A single 'Core Topics Explained' section at the top that briefly summarizes the key concepts for all the incorrect questions combined.\n\n"
-                "2. A 'Practice Questions' section below that contains one new, similar practice question for EACH of the incorrect questions. Each practice question should have four multiple-choice options (A, B, C, D) and you must clearly state the correct answer.\n\n"
+                "2. A 'Practice Questions' section below that contains one new, similar practice question for EACH of the incorrect questions. Each practice question should have four multiple-choice options (A, B, C, D) and you must clearly state the correct answer (e.g., 'Correct Answer: C').\n\n"
                 "IMPORTANT: The entire response must be plain text only, using new lines for formatting. Do not use Markdown (no ##, *, etc.)."
             )
-            
+
             ai_response = model.generate_content(prompt_text)
-            
             study_guide_text = ai_response.text
-            escaped_text = escape_latex(study_guide_text)
-            final_latex_body = escaped_text.replace('\n', '\\par ')
 
-            latex_source = f"""
-            \\documentclass{{article}}
-            \\usepackage[utf8]{{inputenc}}
-            \\title{{Your Personalized Study Guide for: {escape_latex(quiz.title)}}}
-            \\author{{{escape_latex(new_submission.student_name)}}}
-            \\begin{{document}}
-            \\maketitle
-            {final_latex_body}
-            \\end{{document}}
-            """
-            
+            # --- NEW: Parse AI text and render HTML template ---
+            core_topics, practice_questions_data = parse_study_guide_text(study_guide_text)
+
+            context = {
+                'quiz_title': quiz.title,
+                'student_name': student_name,
+                'core_topics_explained': core_topics,
+                'practice_questions': practice_questions_data,
+            }
+            html_string = render_to_string('quiz_app/study_guide_template.html', context)
+
+            # --- NEW: Generate PDF from HTML using WeasyPrint ---
             with tempfile.TemporaryDirectory() as tempdir:
-                tex_filename = os.path.join(tempdir, 'guide.tex')
-                with open(tex_filename, 'w', encoding='utf-8') as f:
-                    f.write(latex_source)
-                
-                subprocess.run(['pdflatex', '-output-directory', tempdir, tex_filename], check=True, capture_output=True)
-                pdf_filename = os.path.join(tempdir, 'guide.pdf')
+                pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
+                HTML(string=html_string).write_pdf(pdf_filename)
 
+                # --- Email the PDF (same as before) ---
                 email = EmailMessage(
                     subject=f"Your Personalized Study Guide for '{quiz.title}'",
-                    body=f"Hello {new_submission.student_name},\n\nHere is your study guide based on the questions you missed. It includes explanations and new practice questions to help you prepare!",
-                    from_email='study-guides@smartstudy.com',
-                    to=[new_submission.student_email],
+                    body=f"Hello {student_name},\n\nHere is your study guide based on the questions you missed. It includes explanations and new practice questions to help you prepare!",
+                    from_email='study-guides@smartstudy.com', # Use a real sender email configured in settings.py
+                    to=[student_email],
                 )
                 email.attach_file(pdf_filename)
-                email.send()
-        
-        return JsonResponse({'status': 'success', 'message': 'Submission saved and guide sent!'})
-        
+                try:
+                    email.send()
+                    print(f"Study guide email sent successfully to {student_email}")
+                    message = 'Submission saved and study guide sent!'
+                except Exception as mail_error:
+                    print(f"!!! EMAIL SENDING ERROR: {mail_error}")
+                    # Decide if you should still return success or indicate email failure
+                    message = 'Submission saved, but failed to send study guide email.'
+                    # Optionally re-raise or handle differently
+
+        else:
+            # No wrong answers, no guide needed
+            message = 'Submission saved! Great job!'
+
+        return JsonResponse({'status': 'success', 'message': message})
+
+    except Quiz.DoesNotExist:
+         print(f"!!! SERVER ERROR: Quiz not found for access code {data.get('access_code')}")
+         return JsonResponse({'error': 'Quiz not found'}, status=404)
     except Exception as e:
-        print("!!! SERVER ERROR:", e)
-        return JsonResponse({'error': str(e)}, status=400)
+        print(f"!!! SUBMISSION/PDF ERROR: {type(e).__name__} - {e}")
+        # Include traceback for debugging
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': 'An internal error occurred.'}, status=500) # Use 500 for server errors
