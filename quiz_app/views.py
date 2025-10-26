@@ -15,7 +15,7 @@ from .models import Quiz, Question, Submission
 from django.db.models import Count
 from django.shortcuts import render
 from django.template.loader import render_to_string
-from weasyprint import HTML
+from fpdf import FPDF
 
 
 # --- AI Model Configuration ---
@@ -27,42 +27,27 @@ model = genai.GenerativeModel('gemini-2.0-flash-lite')
 def parse_study_guide_text(text):
     core_topics = ""
     practice_questions = []
-
     try:
-        # Find sections (adjust keywords based on your prompt)
         core_split = re.split(r'\nPractice Questions\n', text, maxsplit=1, flags=re.IGNORECASE)
         core_text_section = core_split[0]
         practice_text_section = core_split[1] if len(core_split) > 1 else ""
-
-        # Extract core topics text
         core_topics = core_text_section.replace('Core Topics Explained\n', '', 1).strip()
-
-        # Extract practice questions (this is complex and needs refinement)
-        # Assuming format like: "1. Question text\nA) Opt1\nB) Opt2\nC) Opt3\nD) Opt4\nCorrect Answer: C"
-        question_blocks = re.split(r'\n(?=\d+\.\s)', practice_text_section.strip()) # Split by lines starting with "Number."
-
+        question_blocks = re.split(r'\n(?=\d+\.\s)', practice_text_section.strip())
         for block in question_blocks:
             if not block.strip(): continue
             lines = block.strip().split('\n')
-            if len(lines) < 6: continue # Need at least question, 4 options, answer
-
-            question_text = lines[0].split('.', 1)[1].strip() # Remove number like "1. "
-            options = [opt[3:].strip() for opt in lines[1:5]] # Remove A) B) C) D)
+            if len(lines) < 6: continue
+            question_text = lines[0].split('.', 1)[1].strip()
+            options = [opt[3:].strip() for opt in lines[1:5]] # Assumes A) B) C) D) format
             answer_line = lines[5]
-            correct_answer_text = answer_line.replace('Correct Answer:', '').strip()
-
             practice_questions.append({
                 'text': question_text,
                 'options': options,
-                'correct_answer_text': correct_answer_text
             })
-
     except Exception as e:
         print(f"Error parsing study guide text: {e}")
-        # Fallback: return the raw text if parsing fails
-        core_topics = text
+        core_topics = text # Fallback
         practice_questions = []
-
     return core_topics, practice_questions
 
 def teacher_dashboard_view(request):
@@ -149,7 +134,7 @@ def generate_ai_quiz_view(request):
                 f"Create exactly {count} multiple-choice questions. "
                 "Respond with ONLY a single, raw JSON object. Do not include '```json' or any other text before or after the object. "
                 "The JSON object should have a single key 'questions', which is an array of objects. "
-                "Each question object must have three keys: "
+                "Each question object must have two keys: "
                 "1. 'text' (string): The question text. "
                 "2. 'options' (array of 4 strings): The possible answers. "
                 "3. 'correctIndex' (integer from 0 to 3): The index of the correct answer in the 'options' array."
@@ -206,12 +191,11 @@ def submit_quiz_view(request):
         student_email = data.get('email')
         student_answers = data.get('answers', {})
 
-        # 1. Save submission and calculate score (same as before)
+        # 1. Save submission and score (Same as before)
         score = 0
         questions = list(quiz.questions.all())
         for i, question in enumerate(questions):
             submitted_answer_text = student_answers.get(str(i))
-            # Compare submitted text with the correct option text
             if submitted_answer_text and submitted_answer_text == question.options[question.correct_index]:
                 score += 1
 
@@ -223,15 +207,16 @@ def submit_quiz_view(request):
             score=score
         )
 
-        # 2. Find incorrect questions (same as before)
+        # 2. Find incorrect questions (Same as before)
         wrong_questions = []
         for i, question in enumerate(questions):
-            submitted_answer_text = student_answers.get(str(i))
-            if submitted_answer_text != question.options[question.correct_index]:
+             submitted_answer_text = student_answers.get(str(i))
+             if submitted_answer_text != question.options[question.correct_index]:
                  wrong_questions.append(question)
 
-        # 3. If wrong answers, generate guide using AI (same prompt)
+        # 3. If wrong answers, generate guide text using AI (Same prompt)
         if wrong_questions:
+            # --- (Keep the AI prompt generation code exactly the same) ---
             prompt_text = (
                 f"A student needs a study guide for a '{quiz.title}' quiz. "
                 f"They answered these questions incorrectly:\n\n"
@@ -241,49 +226,94 @@ def submit_quiz_view(request):
             prompt_text += (
                 "\nPlease generate a study guide with two distinct sections:\n\n"
                 "1. A single 'Core Topics Explained' section at the top that briefly summarizes the key concepts for all the incorrect questions combined.\n\n"
-                "2. A 'Practice Questions' section below that contains one new, similar practice question for EACH of the incorrect questions. Each practice question should have four multiple-choice options (A, B, C, D) and you must clearly state the correct answer (e.g., 'Correct Answer: C').\n\n"
+                "2. A 'Practice Questions' section below that contains one new, similar practice question for EACH of the incorrect questions. Each practice question should have four multiple-choice options (A, B, C, D).\n\n"
                 "IMPORTANT: The entire response must be plain text only, using new lines for formatting. Do not use Markdown (no ##, *, etc.)."
             )
-
             ai_response = model.generate_content(prompt_text)
             study_guide_text = ai_response.text
 
-            # --- NEW: Parse AI text and render HTML template ---
+            # --- NEW: Parse AI text ---
             core_topics, practice_questions_data = parse_study_guide_text(study_guide_text)
 
-            context = {
-                'quiz_title': quiz.title,
-                'student_name': student_name,
-                'core_topics_explained': core_topics,
-                'practice_questions': practice_questions_data,
-            }
-            html_string = render_to_string('quiz_app/study_guide_template.html', context)
+            # --- NEW: Generate PDF using fpdf2 ---
+            pdf = FPDF()
+            pdf.add_page()
 
-            # --- NEW: Generate PDF from HTML using WeasyPrint ---
+            # Add a font that supports broader Unicode characters (important!)
+            # Download DejaVuSans.ttf if you don't have it, place it in your project
+            # Or use a built-in font if ASCII is sufficient: pdf.set_font("Arial", size=12)
+            try:
+                 # Attempt to add a common font likely available on Render/Linux
+                 pdf.set_font("helvetica", size=12)
+                 # If you need better Unicode, download DejaVuSans.ttf and place it in your static files
+                 # pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True) # Needs the .ttf file
+                 # pdf.set_font('DejaVu', size=12)
+            except RuntimeError:
+                 # Fallback if font isn't found
+                 print("Warning: Using default PDF font, Unicode characters might not render correctly.")
+                 pdf.set_font("helvetica", size=12) # Or 'times', 'courier'
+
+            # --- Write content to PDF ---
+            # Title
+            pdf.set_font(style='B', size=16) # Bold
+            # Encode text properly for fpdf2
+            pdf.cell(0, 10, f"Study Guide for: {quiz.title}".encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
+            pdf.ln(5) # Line break
+
+            # Student Name
+            pdf.set_font(style='', size=12) # Regular
+            pdf.cell(0, 10, f"Student: {student_name}".encode('latin-1', 'replace').decode('latin-1'), ln=True)
+            pdf.ln(10)
+
+            # Core Topics section
+            pdf.set_font(style='B', size=14)
+            pdf.cell(0, 10, "Core Topics Explained".encode('latin-1', 'replace').decode('latin-1'), ln=True)
+            pdf.set_font(style='', size=12)
+            pdf.multi_cell(0, 5, core_topics.encode('latin-1', 'replace').decode('latin-1')) # Use multi_cell for paragraphs
+            pdf.ln(10)
+
+            # Practice Questions section
+            pdf.set_font(style='B', size=14)
+            pdf.cell(0, 10, "Practice Questions".encode('latin-1', 'replace').decode('latin-1'), ln=True)
+            pdf.set_font(style='', size=12)
+
+            for i, pq in enumerate(practice_questions_data):
+                pdf.set_font(style='B')
+                pdf.multi_cell(0, 5, f"{i + 1}. {pq['text']}".encode('latin-1', 'replace').decode('latin-1'))
+                pdf.set_font(style='')
+                pdf.ln(2) # Small break
+                options_text = ""
+                option_labels = ['A', 'B', 'C', 'D']
+                for j, option in enumerate(pq['options']):
+                     options_text += f"   {option_labels[j]}) {option}\n"
+                pdf.multi_cell(0, 5, options_text.strip().encode('latin-1', 'replace').decode('latin-1'))
+                pdf.ln(2)
+                pdf.set_text_color(0, 128, 0) # Green color for answer
+                pdf.set_text_color(0, 0, 0) # Reset color to black
+                pdf.ln(8) # Space between questions
+
+            # --- Save PDF to temp file and email ---
             with tempfile.TemporaryDirectory() as tempdir:
                 pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
-                HTML(string=html_string).write_pdf(pdf_filename)
+                pdf.output(pdf_filename) # Save the PDF
 
                 # --- Email the PDF (same as before) ---
                 email = EmailMessage(
                     subject=f"Your Personalized Study Guide for '{quiz.title}'",
-                    body=f"Hello {student_name},\n\nHere is your study guide based on the questions you missed. It includes explanations and new practice questions to help you prepare!",
-                    from_email='study-guides@smartstudy.com', # Use a real sender email configured in settings.py
+                    body=f"Hello {student_name},\n\nHere is your study guide based on the questions you missed...",
+                    from_email='study-guides@smartstudy.com', # Use configured sender
                     to=[student_email],
                 )
                 email.attach_file(pdf_filename)
                 try:
                     email.send()
-                    print(f"Study guide email sent successfully to {student_email}")
+                    print(f"Study guide PDF sent via fpdf2 to {student_email}")
                     message = 'Submission saved and study guide sent!'
                 except Exception as mail_error:
                     print(f"!!! EMAIL SENDING ERROR: {mail_error}")
-                    # Decide if you should still return success or indicate email failure
                     message = 'Submission saved, but failed to send study guide email.'
-                    # Optionally re-raise or handle differently
 
         else:
-            # No wrong answers, no guide needed
             message = 'Submission saved! Great job!'
 
         return JsonResponse({'status': 'success', 'message': message})
@@ -293,7 +323,6 @@ def submit_quiz_view(request):
          return JsonResponse({'error': 'Quiz not found'}, status=404)
     except Exception as e:
         print(f"!!! SUBMISSION/PDF ERROR: {type(e).__name__} - {e}")
-        # Include traceback for debugging
         import traceback
         traceback.print_exc()
-        return JsonResponse({'error': 'An internal error occurred.'}, status=500) # Use 500 for server errors
+        return JsonResponse({'error': 'An internal error occurred.'}, status=500)
