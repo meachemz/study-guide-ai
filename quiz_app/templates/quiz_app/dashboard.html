@@ -236,11 +236,11 @@
 
         <!-- AI create -->
         <div id="create-ai">
-          <p class="muted">Pick a subject & subtopic. Click <strong>Generate with AI</strong>. We’ll save a placeholder quiz with an access code. Your teammate will wire this button to Gemini later.</p>
+          <p class="muted">Pick a subject & subtopic. Click <strong>Generate with AI</strong>. We’ll save a placeholder quiz with an access code.</p>
           <div class="grid cols-2">
             <div class="field">
               <label>Subject</label>
-              <select id="ai-subject" onchange="fillSubtopics()">
+              <select id="ai-subject">
                 <option value="Math">Math</option>
                 <option value="Biology">Biology</option>
                 <option value="History">History</option>
@@ -248,15 +248,15 @@
               </select>
             </div>
             <div class="field">
-              <label>Subtopic</label>
-              <select id="ai-subtopic"></select>
+              <label>Unit Description</label>
+              <textarea id="ai-subtopic" rows="3" placeholder="e.g., 'A unit on Cell Structure and Mitosis'"></textarea>
             </div>
           </div>
           <div class="grid cols-3">
             <div class="field">
-              <label>Difficulty</label>
-              <select id="ai-diff">
-                <option>Easy</option><option>Medium</option><option>Hard</option>
+              <label>Grade Level</label>
+              <select id="ai-level">
+                <option>5th grade</option><option>6th grade</option><option>7th grade</option><option>8th grade</option><option>9th grade</option><option>10th grade</option><option>11th grade</option><option>12th grade</option>
               </select>
             </div>
             <div class="field">
@@ -416,20 +416,6 @@ async function delQuiz(code){
 }
 
 /* ---------- AI ASSISTED ---------- */
-const SUBTOPICS = {
-  Math:['Algebra','Geometry','Trigonometry','Probability'],
-  Biology:['Cell Structure','Genetics','Human Body','Ecology'],
-  History:['US History','World Wars','Civics','Ancient'],
-  English:['Grammar','Reading Comp.','Vocabulary','Writing']
-};
-function fillSubtopics(){
-  const subjEl = document.getElementById('ai-subject');
-  if (!subjEl) return;
-  const subj = subjEl.value;
-  const sel  = document.getElementById('ai-subtopic');
-  sel.innerHTML = (SUBTOPICS[subj] || []).map(s=>`<option>${s}</option>`).join('');
-}
-
 async function generateWithAI(){
   const button = event.target;
   button.disabled = true;
@@ -437,7 +423,7 @@ async function generateWithAI(){
   const payload = {
     subject: document.getElementById('ai-subject').value,
     subtopic: document.getElementById('ai-subtopic').value,
-    difficulty: document.getElementById('ai-diff').value,
+    gradelevel: document.getElementById('ai-level').value,
     count: parseInt(document.getElementById('ai-count').value, 10)
   };
   try {
@@ -528,13 +514,19 @@ function switchCreate(which){
 function saveProfile(){ toast('Profile saved (demo only)'); }
 function fakeReset(){ toast('Credentials updated (demo only)'); }
 
+
 /* ---------- INITIAL PAGE LOAD ---------- */
 document.addEventListener('DOMContentLoaded', () => {
-    fillSubtopics();
-    addQuestion();
-    refresh();
-    show('overview', document.querySelector('aside nav a'));
+    
+    // This calls your function as soon as the page loads
+    refresh(); 
+
+    // Your other setup code
+    addQuestion(); // Adds the first blank question to the 'manual' tab
+    show('overview', document.querySelector('aside nav a'));
 });
+
+
 </script>
 </body>
 </html>

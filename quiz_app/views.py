@@ -125,12 +125,12 @@ def generate_ai_quiz_view(request):
             data = json.loads(request.body)
             subject = data.get('subject')
             subtopic = data.get('subtopic')
-            difficulty = data.get('difficulty')
+            gradelevel = data.get('gradelevel')
             count = data.get('count')
 
             # --- Prompt Engineering: Ask the AI for structured JSON ---
             prompt = (
-                f"Generate a quiz about {subject}: {subtopic} with a difficulty of {difficulty}. "
+                f"Help Generate a quiz for a teacher about {subject}: The teccher describes the unit being:{subtopic} with a gradelevel of {gradelevel}. "
                 f"Create exactly {count} multiple-choice questions. "
                 "Respond with ONLY a single, raw JSON object. Do not include '```json' or any other text before or after the object. "
                 "The JSON object should have a single key 'questions', which is an array of objects. "
@@ -146,7 +146,7 @@ def generate_ai_quiz_view(request):
             quiz_content = json.loads(cleaned_text)
 
             # Create and save the quiz to the database
-            quiz_title = f"{subject}: {subtopic} ({difficulty})"
+            quiz_title = f"{subject}({gradelevel})"
             new_quiz = Quiz.objects.create(title=quiz_title)
             
             for q_data in quiz_content.get('questions', []):
@@ -180,6 +180,54 @@ def quiz_display_view(request, access_code):
 
 # In quiz_app/views.py
 
+def parse_study_guide_text(text):
+    """
+    Parses the plain text AI response into a list of practice question data.
+    
+    Expects a format like:
+    Fundamental Topic: [Topic Title]
+    Practice Question: [Question Text]
+    A) [Option A]
+    B) [Option B]
+    C) [Option C]
+    D) [Option D]
+    Correct Answer: [A, B, C, or D]
+    """
+    practice_questions_data = []
+    
+    # This regex finds all components for each question
+    pattern = re.compile(
+        r"Fundamental Topic:\s*(.*?)\n"       # 1. Topic
+        r"Practice Question:\s*(.*?)\n"      # 2. Question Text
+        r"A\)\s*(.*?)\n"                      # 3. Option A
+        r"B\)\s*(.*?)\n"                      # 4. Option B
+        r"C\)\s*(.*?)\n"                      # 5. Option C
+        r"D\s*\)\s*(.*?)\n"                   # 6. Option D (added \s* for flexibility)
+        r"Correct Answer:\s*([A-D])",         # 7. Answer (A, B, C, or D)
+        re.DOTALL | re.MULTILINE | re.IGNORECASE
+    )
+
+    for match in pattern.finditer(text):
+        # Unpack all 7 captured groups
+        topic, question, opt_a, opt_b, opt_c, opt_d, answer = match.groups()
+        
+        practice_questions_data.append({
+            'topic': topic.strip(),
+            'text': question.strip(),
+            'options': [opt_a.strip(), opt_b.strip(), opt_c.strip(), opt_d.strip()],
+            'answer': answer.strip().upper()
+        })
+        
+        # Stop after finding 5, as requested in the prompt
+        if len(practice_questions_data) == 5:
+            break 
+
+    # --- UPDATED: This function ONLY returns practice questions ---
+    return practice_questions_data
+
+# ---
+# Your UPDATED view function
+# ---
 def submit_quiz_view(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request method'}, status=405)
@@ -214,90 +262,94 @@ def submit_quiz_view(request):
              if submitted_answer_text != question.options[question.correct_index]:
                  wrong_questions.append(question)
 
-        # 3. If wrong answers, generate guide text using AI (Same prompt)
+        # 3. If wrong answers, generate guide text using AI
         if wrong_questions:
-            # --- (Keep the AI prompt generation code exactly the same) ---
-            prompt_text = (
-                f"A student needs a study guide for a '{quiz.title}' quiz. "
-                f"They answered these questions incorrectly:\n\n"
-            )
+            
+            # --- NEW: Simplified AI Prompt ---
+            prompt_text = "The following are questions a student answered incorrectly:\n\n"
             for q in wrong_questions:
                 prompt_text += f"- Question: {q.text}\n"
+            
             prompt_text += (
-                "\nPlease generate a study guide with two distinct sections:\n\n"
-                "1. A single 'Core Topics Explained' section at the top that briefly summarizes the key concepts for all the incorrect questions combined.\n\n"
-                "2. A 'Practice Questions' section below that contains one new, similar practice question for EACH of the incorrect questions. Each practice question should have four multiple-choice options (A, B, C, D).\n\n"
-                "IMPORTANT: The entire response must be plain text only, using new lines for formatting. Do not use Markdown (no ##, *, etc.)."
+                "\nPlease generate exactly five practice questions based on the topics from the questions above.\n\n"
+                "For EACH of the five questions, you MUST provide the following in plain text:\n"
+                "1. A 'Fundamental Topic' title (e.g., 'Fundamental Topic: Newton's Second Law').\n"
+                "2. The 'Practice Question' text (e.g., 'Practice Question: What is...').\n"
+                "3. Four multiple-choice options (labeled A), B), C), D)).\n"
+                "4. The 'Correct Answer' (e.g., 'Correct Answer: A').\n\n"
+                "IMPORTANT: The entire response must be plain text only. Do not use Markdown (no ##, *, etc.)."
+                "Format each question clearly with these labels."
             )
+            
             ai_response = model.generate_content(prompt_text)
             study_guide_text = ai_response.text
 
-            # --- NEW: Parse AI text ---
-            core_topics, practice_questions_data = parse_study_guide_text(study_guide_text)
+            # --- UPDATED: Parse AI text ---
+            # The new parser only returns practice_questions_data
+            practice_questions_data = parse_study_guide_text(study_guide_text)
 
-            # --- NEW: Generate PDF using fpdf2 ---
+            # --- Generate PDF using fpdf2 ---
             pdf = FPDF()
             pdf.add_page()
-
-            # Add a font that supports broader Unicode characters (important!)
-            # Download DejaVuSans.ttf if you don't have it, place it in your project
-            # Or use a built-in font if ASCII is sufficient: pdf.set_font("Arial", size=12)
+            
             try:
-                 # Attempt to add a common font likely available on Render/Linux
                  pdf.set_font("helvetica", size=12)
-                 # If you need better Unicode, download DejaVuSans.ttf and place it in your static files
-                 # pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True) # Needs the .ttf file
-                 # pdf.set_font('DejaVu', size=12)
             except RuntimeError:
-                 # Fallback if font isn't found
                  print("Warning: Using default PDF font, Unicode characters might not render correctly.")
-                 pdf.set_font("helvetica", size=12) # Or 'times', 'courier'
+                 pdf.set_font("helvetica", size=12) 
 
             # --- Write content to PDF ---
             # Title
-            pdf.set_font(style='B', size=16) # Bold
-            # Encode text properly for fpdf2
+            pdf.set_font(style='B', size=16)
             pdf.cell(0, 10, f"Study Guide for: {quiz.title}".encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
-            pdf.ln(5) # Line break
+            pdf.ln(5) 
 
             # Student Name
-            pdf.set_font(style='', size=12) # Regular
+            pdf.set_font(style='', size=12)
             pdf.cell(0, 10, f"Student: {student_name}".encode('latin-1', 'replace').decode('latin-1'), ln=True)
             pdf.ln(10)
 
-            # Core Topics section
-            pdf.set_font(style='B', size=14)
-            pdf.cell(0, 10, "Core Topics Explained".encode('latin-1', 'replace').decode('latin-1'), ln=True)
-            pdf.set_font(style='', size=12)
-            pdf.multi_cell(0, 5, core_topics.encode('latin-1', 'replace').decode('latin-1')) # Use multi_cell for paragraphs
-            pdf.ln(10)
+            # --- REMOVED: Core Topics section ---
 
-            # Practice Questions section
+            # --- UPDATED: Practice Questions section ---
             pdf.set_font(style='B', size=14)
             pdf.cell(0, 10, "Practice Questions".encode('latin-1', 'replace').decode('latin-1'), ln=True)
             pdf.set_font(style='', size=12)
+            pdf.ln(5) # Add a little space before the first question
 
             for i, pq in enumerate(practice_questions_data):
-                pdf.set_font(style='B')
-                pdf.multi_cell(0, 5, f"{i + 1}. {pq['text']}".encode('latin-1', 'replace').decode('latin-1'))
-                pdf.set_font(style='')
-                pdf.ln(2) # Small break
+                # --- ADDED: Fundamental Topic ---
+                pdf.set_font(style='B', size=12) # Bold topic
+                pdf.multi_cell(0, 5, f"{i + 1}. Fundamental Topic: {pq['topic']}".encode('latin-1', 'replace').decode('latin-1'))
+                pdf.ln(2)
+
+                # --- Question Text ---
+                pdf.set_font(style='', size=12) # Regular question text
+                pdf.multi_cell(0, 5, f"   Question: {pq['text']}".encode('latin-1', 'replace').decode('latin-1'))
+                pdf.ln(2) 
+                
+                # --- Options ---
                 options_text = ""
                 option_labels = ['A', 'B', 'C', 'D']
                 for j, option in enumerate(pq['options']):
-                     options_text += f"   {option_labels[j]}) {option}\n"
+                    options_text += f"      {option_labels[j]}) {option}\n"
                 pdf.multi_cell(0, 5, options_text.strip().encode('latin-1', 'replace').decode('latin-1'))
                 pdf.ln(2)
+
+                # --- ADDED: Correct Answer ---
                 pdf.set_text_color(0, 128, 0) # Green color for answer
+                pdf.set_font(style='B')
+                pdf.cell(0, 5, f"   Correct Answer: {pq['answer']}".encode('latin-1', 'replace').decode('latin-1'), ln=True)
                 pdf.set_text_color(0, 0, 0) # Reset color to black
+                pdf.set_font(style='')
                 pdf.ln(8) # Space between questions
 
-            # --- Save PDF to temp file and email ---
+            # --- Save PDF to temp file and email (Same as before) ---
             with tempfile.TemporaryDirectory() as tempdir:
                 pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
                 pdf.output(pdf_filename) # Save the PDF
 
-                # --- Email the PDF (same as before) ---
+                # --- Email the PDF (Same as before) ---
                 email = EmailMessage(
                     subject=f"Your Personalized Study Guide for '{quiz.title}'",
                     body=f"Hello {student_name},\n\nHere is your study guide based on the questions you missed...",
