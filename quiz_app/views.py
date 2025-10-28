@@ -16,6 +16,7 @@ from django.db.models import Count
 from django.shortcuts import render
 from django.template.loader import render_to_string
 from fpdf import FPDF
+from background_task import background
 
 
 # --- AI Model Configuration ---
@@ -226,8 +227,131 @@ def parse_study_guide_text(text):
     return practice_questions_data
 
 # ---
-# Your UPDATED view function
+# view function
 # ---
+
+# --- background task function ---
+@background(schedule=5) # Run this 5 seconds from now
+def process_and_send_guide(submission_id):
+    print(f"BACKGROUND TASK: Starting study guide for submission {submission_id}")
+    try:
+        submission = Submission.objects.get(id=submission_id)
+        quiz = submission.quiz
+        student_name = submission.student_name
+        student_email = submission.student_email
+
+        # 1. Find wrong questions (logic moved from the view)
+        wrong_questions = []
+        questions = list(quiz.questions.all())
+        for i, question in enumerate(questions):
+            submitted_answer_text = submission.answers.get(str(i))
+            if submitted_answer_text != question.options[question.correct_index]:
+                wrong_questions.append(question)
+        
+        if not wrong_questions:
+            print("BACKGROUND TASK: No wrong questions, nothing to send.")
+            return
+
+        # 2. HERE IS YOUR PROMPT LOGIC
+        print(f"BACKGROUND TASK: Generating AI prompt for {student_name}")
+        prompt_text = "The following are questions a student answered incorrectly:\n\n"
+        for q in wrong_questions:
+            prompt_text += f"- Question: {q.text}\n"
+        
+        prompt_text += (
+            "\nPlease generate exactly five practice questions based on the topics from the questions above.\n\n"
+            "For EACH of the five questions, you MUST provide the following in plain text:\n"
+            "1. A 'Fundamental Topic' title (e.g., 'Fundamental Topic: Newton's Second Law').\n"
+            "2. The 'Practice Question' text (e.g., 'Practice Question: What is...').\n"
+            "3. Four multiple-choice options (labeled A), B), C), D)).\n"
+            "4. The 'Correct Answer' (e.g., 'Correct Answer: A').\n\n"
+            "IMPORTANT: The entire response must be plain text only. Do not use Markdown (no ##, *, etc.)."
+            "Format each question clearly with these labels."
+        )
+        
+        # 3. Call the AI Model
+        ai_response = model.generate_content(prompt_text)
+        study_guide_text = ai_response.text
+        print("BACKGROUND TASK: AI content received.")
+
+        # 4. Parse and Create PDF
+        practice_questions_data = parse_study_guide_text(study_guide_text)
+        
+        pdf = FPDF()
+        pdf.add_page()
+        # ... (all your PDF generation code, e.g., pdf.set_font, pdf.cell, etc.) ...
+        print("BACKGROUND TASK: PDF created.")
+        
+        # 5. Send the Email
+        with tempfile.TemporaryDirectory() as tempdir:
+            pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
+            pdf.output(pdf_filename)
+
+            email = EmailMessage(
+                subject=f"Your Personalized Study Guide for '{quiz.title}'",
+                body=f"Hello {student_name},\n\nHere is your study guide based on the questions you missed...",
+                from_email='your-email@your-domain.com', # Use your configured sender
+                to=[student_email],
+            )
+            email.attach_file(pdf_filename)
+            
+            # This is the part that was timing out
+            email.send() 
+            
+            print(f"BACKGROUND TASK: Successfully sent guide to {student_email}")
+
+    except Exception as e:
+        print(f"!!! BACKGROUND TASK FAILED: {e}")
+
+def submit_quiz_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        quiz = Quiz.objects.get(access_code=data.get('access_code'))
+        student_name = data.get('name')
+        student_email = data.get('email')
+        student_answers = data.get('answers', {})
+
+        # 1. Save submission and score (This is fast)
+        score = 0
+        questions = list(quiz.questions.all())
+        for i, question in enumerate(questions):
+            submitted_answer_text = student_answers.get(str(i))
+            if submitted_answer_text and submitted_answer_text == question.options[question.correct_index]:
+                score += 1
+
+        new_submission = Submission.objects.create(
+            quiz=quiz,
+            student_name=student_name,
+            student_email=student_email,
+            answers=student_answers,
+            score=score
+        )
+
+        # 2. Check for wrong answers
+        has_wrong_answers = any(
+            student_answers.get(str(i)) != q.options[q.correct_index] 
+            for i, q in enumerate(questions)
+        )
+
+        # 3. Call the background task
+        if has_wrong_answers:
+            process_and_send_guide(new_submission.id) # <-- THIS IS THE NEW LINE
+            message = 'Submission saved! Your study guide is being generated and will be emailed to you shortly.'
+        else:
+            message = 'Submission saved! Great job!'
+        
+        # 4. Return IMMEDIATE success
+        return JsonResponse({'status': 'success', 'message': message})
+
+    except Quiz.DoesNotExist:
+        return JsonResponse({'error': 'Quiz not found'}, status=404)
+    except Exception as e:
+        print(f"!!! SUBMISSION VIEW ERROR: {e}")
+        return JsonResponse({'error': 'An internal error occurred.'}, status=500)
+    
 def submit_quiz_view(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request method'}, status=405)
