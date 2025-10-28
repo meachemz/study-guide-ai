@@ -60,6 +60,7 @@ if RENDER_HOSTNAME:
 
 INSTALLED_APPS = [
     'django.contrib.admin',
+    'background_task',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',

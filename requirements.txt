@@ -10,6 +10,7 @@ cssselect2==0.8.0
 defusedxml==0.7.1
 dj-database-url==3.0.1
 Django==5.2.6
+django-background-tasks==1.2.8
 fonttools==4.60.1
 fpdf2==2.8.4
 google-ai-generativelanguage==0.6.15
@@ -40,6 +41,7 @@ pyphen==0.17.2
 python-dotenv==1.1.1
 requests==2.32.5
 rsa==4.9.1
+six==1.17.0
 sqlparse==0.5.3
 tinycss2==1.4.0
 tinyhtml5==2.0.0
