@@ -303,6 +303,13 @@ def process_and_send_guide(submission_id):
     except Exception as e:
         print(f"!!! BACKGROUND TASK FAILED: {e}")
 
+import json
+from django.http import JsonResponse
+from .models import Quiz, Submission # Make sure to import your models
+
+# Make sure your background task is imported
+# from .tasks import process_and_send_guide 
+
 def submit_quiz_view(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request method'}, status=405)
@@ -314,14 +321,44 @@ def submit_quiz_view(request):
         student_email = data.get('email')
         student_answers = data.get('answers', {})
 
-        # 1. Save submission and score (This is fast)
         score = 0
+        has_wrong_answers = False
         questions = list(quiz.questions.all())
+
+        # --- REFACTORED SCORING AND CHECKING LOOP ---
         for i, question in enumerate(questions):
             submitted_answer_text = student_answers.get(str(i))
-            if submitted_answer_text and submitted_answer_text == question.options[question.correct_index]:
-                score += 1
+            
+            try:
+                # --- THIS IS THE FIX ---
+                # 1. Try to get the correct answer text
+                correct_answer_text = question.options[question.correct_index]
+                
+                # 2. Compare it to the submitted answer
+                if submitted_answer_text == correct_answer_text:
+                    score += 1
+                else:
+                    # This is True for a wrong answer OR a skipped answer (None)
+                    has_wrong_answers = True 
+            
+            except IndexError:
+                # --- THIS IS THE FIX ---
+                # This question is broken in the database!
+                # We log the error so we can fix it later,
+                # mark it as "wrong" (to trigger the study guide),
+                # and continue the loop without crashing.
+                print(f"!!! DATA ERROR: Question ID {question.id} has an invalid correct_index.")
+                has_wrong_answers = True
+                continue
+            except Exception as e:
+                # Catch any other unexpected errors with this question
+                print(f"!!! UNKNOWN QUESTION ERROR: Question ID {question.id}, Error: {e}")
+                has_wrong_answers = True
+                continue
 
+        # --- END OF REFACTORED LOOP ---
+
+        # 1. Save submission (now with the correct score)
         new_submission = Submission.objects.create(
             quiz=quiz,
             student_name=student_name,
@@ -330,25 +367,24 @@ def submit_quiz_view(request):
             score=score
         )
 
-        # 2. Check for wrong answers
-        has_wrong_answers = any(
-            student_answers.get(str(i)) != q.options[q.correct_index] 
-            for i, q in enumerate(questions)
-        )
-
-        # 3. Call the background task
+        # 2. Call the background task (if needed)
         if has_wrong_answers:
-            process_and_send_guide(new_submission.id) # <-- THIS IS THE NEW LINE
+            # Remember to use .delay() or .schedule() for django-background-tasks
+            # process_and_send_guide.delay(new_submission.id) # <-- Example
+            
+            # For now, just calling it directly as in your code:
+            process_and_send_guide(new_submission.id) 
+            
             message = 'Submission saved! Your study guide is being generated and will be emailed to you shortly.'
         else:
             message = 'Submission saved! Great job!'
         
-        # 4. Return IMMEDIATE success
+        # 3. Return IMMEDIATE success
         return JsonResponse({'status': 'success', 'message': message})
 
     except Quiz.DoesNotExist:
         return JsonResponse({'error': 'Quiz not found'}, status=404)
     except Exception as e:
-        print(f"!!! SUBMISSION VIEW ERROR: {e}")
+        # This will now only catch *other* errors, not the IndexError
+        print(f"!!! SUBMISSION VIEW ERROR: {e}") 
         return JsonResponse({'error': 'An internal error occurred.'}, status=500)
-    
