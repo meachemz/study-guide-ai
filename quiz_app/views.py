@@ -233,27 +233,40 @@ def parse_study_guide_text(text):
 # --- background task function ---
 @background(schedule=5) # Run this 5 seconds from now
 def process_and_send_guide(submission_id):
-    print(f"BACKGROUND TASK: Starting study guide for submission {submission_id}")
+    print(f"FUNCTION: Starting study guide for submission {submission_id}")
     try:
         submission = Submission.objects.get(id=submission_id)
         quiz = submission.quiz
         student_name = submission.student_name
         student_email = submission.student_email
 
-        # 1. Find wrong questions (logic moved from the view)
+        # 1. Find wrong questions (with bug fix)
         wrong_questions = []
         questions = list(quiz.questions.all())
         for i, question in enumerate(questions):
             submitted_answer_text = submission.answers.get(str(i))
-            if submitted_answer_text != question.options[question.correct_index]:
+            
+            try:
+              
+              
+                correct_answer_text = question.options[question.correct_index]
+                
+                # Now compare
+                if submitted_answer_text != correct_answer_text:
+                    wrong_questions.append(question)
+                    
+            except IndexError:
+                # This question is broken! Log it and add it to the guide.
+                print(f"!!! DATA ERROR: Question ID {question.id} has an invalid correct_index.")
                 wrong_questions.append(question)
+                continue
         
         if not wrong_questions:
-            print("BACKGROUND TASK: No wrong questions, nothing to send.")
+            print("FUNCTION: No wrong questions, nothing to send.")
             return
 
-        # 2. HERE IS YOUR PROMPT LOGIC
-        print(f"BACKGROUND TASK: Generating AI prompt for {student_name}")
+        # 2. Generate AI Prompt
+        print(f"FUNCTION: Generating AI prompt for {student_name}")
         prompt_text = "The following are questions a student answered incorrectly:\n\n"
         for q in wrong_questions:
             prompt_text += f"- Question: {q.text}\n"
@@ -268,47 +281,99 @@ def process_and_send_guide(submission_id):
             "IMPORTANT: The entire response must be plain text only. Do not use Markdown (no ##, *, etc.)."
             "Format each question clearly with these labels."
         )
+       
         
         # 3. Call the AI Model
         ai_response = model.generate_content(prompt_text)
         study_guide_text = ai_response.text
-        print("BACKGROUND TASK: AI content received.")
+        print("FUNCTION: AI content received.")
 
         # 4. Parse and Create PDF
         practice_questions_data = parse_study_guide_text(study_guide_text)
-        
         pdf = FPDF()
         pdf.add_page()
-        # ... (all your PDF generation code, e.g., pdf.set_font, pdf.cell, etc.) ...
-        print("BACKGROUND TASK: PDF created.")
         
-        # 5. Send the Email
+        try:
+                pdf.set_font("helvetica", size=12)
+        except RuntimeError:
+                print("Warning: Using default PDF font, Unicode characters might not render correctly.")
+                pdf.set_font("helvetica", size=12) 
+
+        # --- Write content to PDF ---
+        # Title
+        pdf.set_font(style='B', size=16)
+        pdf.cell(0, 10, f"Study Guide for: {quiz.title}".encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
+        pdf.ln(5) 
+
+        # Student Name
+        pdf.set_font(style='', size=12)
+        pdf.cell(0, 10, f"Student: {student_name}".encode('latin-1', 'replace').decode('latin-1'), ln=True)
+        pdf.ln(10)
+
+        # --- REMOVED: Core Topics section ---
+
+        # --- UPDATED: Practice Questions section ---
+        pdf.set_font(style='B', size=14)
+        pdf.cell(0, 10, "Practice Questions".encode('latin-1', 'replace').decode('latin-1'), ln=True)
+        pdf.set_font(style='', size=12)
+        pdf.ln(5) # Add a little space before the first question
+
+        for i, pq in enumerate(practice_questions_data):
+            # --- ADDED: Fundamental Topic ---
+            pdf.set_font(style='B', size=12) # Bold topic
+            pdf.multi_cell(0, 5, f"{i + 1}. Fundamental Topic: {pq['topic']}".encode('latin-1', 'replace').decode('latin-1'))
+            pdf.ln(2)
+
+            # --- Question Text ---
+            pdf.set_font(style='', size=12) # Regular question text
+            pdf.multi_cell(0, 5, f"   Question: {pq['text']}".encode('latin-1', 'replace').decode('latin-1'))
+            pdf.ln(2) 
+            
+            # --- Options ---
+            options_text = ""
+            option_labels = ['A', 'B', 'C', 'D']
+            for j, option in enumerate(pq['options']):
+                options_text += f"      {option_labels[j]}) {option}\n"
+            pdf.multi_cell(0, 5, options_text.strip().encode('latin-1', 'replace').decode('latin-1'))
+            pdf.ln(2)
+
+            # --- ADDED: Correct Answer ---
+            pdf.set_text_color(0, 128, 0) # Green color for answer
+            pdf.set_font(style='B')
+            pdf.cell(0, 5, f"   Correct Answer: {pq['answer']}".encode('latin-1', 'replace').decode('latin-1'), ln=True)
+            pdf.set_text_color(0, 0, 0) # Reset color to black
+            pdf.set_font(style='')
+            pdf.ln(8) # Space between questions
+
+        # --- Save PDF to temp file and email (Same as before) ---
         with tempfile.TemporaryDirectory() as tempdir:
             pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
-            pdf.output(pdf_filename)
+            pdf.output(pdf_filename) # Save the PDF
+
+        print("FUNCTION: PDF created.")
+        
+        # 5. Send the Email (with bug fix)
+        with tempfile.TemporaryDirectory() as tempdir:
+            pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
+            # pdf.output(pdf_filename) # (assuming your PDF code is here)
 
             email = EmailMessage(
                 subject=f"Your Personalized Study Guide for '{quiz.title}'",
-                body=f"Hello {student_name},\n\nHere is your study guide based on the questions you missed...",
-                from_email='your-email@your-domain.com', # Use your configured sender
+                body=f"Hello {student_name},\n\nHere is your study guide...",
+                
+
+                from_email=settings.DEFAULT_FROM_EMAIL,  # <-- Use the verified sender
+                
                 to=[student_email],
             )
             email.attach_file(pdf_filename)
-            
-            # This is the part that was timing out
             email.send() 
             
-            print(f"BACKGROUND TASK: Successfully sent guide to {student_email}")
+            print(f"FUNCTION: Successfully sent guide to {student_email}")
 
     except Exception as e:
-        print(f"!!! BACKGROUND TASK FAILED: {e}")
-
-import json
-from django.http import JsonResponse
-from .models import Quiz, Submission # Make sure to import your models
-
-# Make sure your background task is imported
-# from .tasks import process_and_send_guide 
+        # This log will now show the *real* error (e.g., from the AI, or PDF)
+        print(f"!!! FUNCTION FAILED: {e}")
 
 def submit_quiz_view(request):
     if request.method != 'POST':
