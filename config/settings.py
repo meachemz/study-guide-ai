@@ -172,3 +172,20 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+###DEBUGING EMAIL API
+# settings.py (Add to bottom)
+import os
+import sys
+
+# Read the key
+debug_key = os.environ.get("BREVO_API_KEY", None)
+
+# Print to logs
+if debug_key:
+    print(f"DEBUG: Key found! Length: {len(debug_key)}")
+    print(f"DEBUG: First 5 chars: {debug_key[:5]}...")
+    print(f"DEBUG: Last 5 chars: ...{debug_key[-5:]}")
+else:
+    print("DEBUG: CRITICAL - Key is NOT found in environment variables.")
