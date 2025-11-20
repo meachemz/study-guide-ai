@@ -35,7 +35,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 EMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
 
 ANYMAIL = {
-    "BREVO_API_KEY": os.getenv("BREVO_API_KEY"),
+    "BREVO_API_KEY": "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",
 }
 
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
@@ -174,18 +174,4 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-###DEBUGING EMAIL API
-# settings.py (Add to bottom)
-import os
-import sys
 
-# Read the key
-debug_key = os.environ.get("BREVO_API_KEY", None)
-
-# Print to logs
-if debug_key:
-    print(f"DEBUG: Key found! Length: {len(debug_key)}")
-    print(f"DEBUG: First 5 chars: {debug_key[:5]}...")
-    print(f"DEBUG: Last 5 chars: ...{debug_key[-5:]}")
-else:
-    print("DEBUG: CRITICAL - Key is NOT found in environment variables.")
