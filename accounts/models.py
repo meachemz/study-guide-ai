@@ -1,6 +1,8 @@
 from django.db import models
 import random
 import string
+from django.core.exceptions import ValidationError 
+
 
 def generate_access_code():
     """Generates a unique 5-character uppercase alphanumeric code."""
@@ -21,10 +23,37 @@ class Quiz(models.Model):
 class Question(models.Model):
     quiz = models.ForeignKey(Quiz, related_name='questions', on_delete=models.CASCADE)
     text = models.TextField()
-    # Options will be stored as a simple JSON list: ["Option A", "Option B", ...]
     options = models.JSONField()
-    # The index of the correct option in the `options` list
     correct_index = models.PositiveSmallIntegerField()
 
     def __str__(self):
         return self.text
+
+    # --- ADD THIS ENTIRE METHOD ---
+    def clean(self):
+        """
+        This is the validation logic that stops bad data.
+        It runs automatically in the Django Admin.
+        """
+        super().clean()  # Always call this first
+
+        # Check 1: Are options a valid list?
+        if not isinstance(self.options, list) or len(self.options) == 0:
+            raise ValidationError(
+                {'options': 'You must provide a list of at least one option.'}
+            )
+
+        # Check 2: Is the index valid for the options list?
+        if self.correct_index is None:
+            raise ValidationError(
+                {'correct_index': 'You must provide a correct index.'}
+            )
+            
+        num_options = len(self.options)
+        if not (0 <= self.correct_index < num_options):
+            raise ValidationError(
+                {
+                    'correct_index': f"Invalid index ({self.correct_index}). "
+                                     f"It must be between 0 and {num_options - 1}."
+                }
+            )

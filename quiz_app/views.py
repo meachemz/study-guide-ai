@@ -17,11 +17,20 @@ from django.shortcuts import render
 from django.template.loader import render_to_string
 from fpdf import FPDF
 from background_task import background
+from django.contrib.auth.models import User
 
 
 # --- AI Model Configuration ---
 genai.configure(api_key=settings.GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash-lite')
+
+##TESTING PURPOSES
+def create_user():
+    user = User.objects.create_user(
+        username='newuser',
+        password='securepassword123'
+    )
+    user.save()
 
 # --- Helper function to parse AI plain text study guide ---
 # (This is a basic example, you might need a more robust parser)
@@ -230,200 +239,45 @@ def parse_study_guide_text(text):
 # view function
 # ---
 
-# --- background task function ---
-@background(schedule=5) # Run this 5 seconds from now
-def process_and_send_guide(submission_id):
-    print(f"FUNCTION: Starting study guide for submission {submission_id}")
-    try:
-        submission = Submission.objects.get(id=submission_id)
-        quiz = submission.quiz
-        student_name = submission.student_name
-        student_email = submission.student_email
-
-        # 1. Find wrong questions (with bug fix)
-        wrong_questions = []
-        questions = list(quiz.questions.all())
-        for i, question in enumerate(questions):
-            submitted_answer_text = submission.answers.get(str(i))
-            
-            try:
-              
-              
-                correct_answer_text = question.options[question.correct_index]
-                
-                # Now compare
-                if submitted_answer_text != correct_answer_text:
-                    wrong_questions.append(question)
-                    
-            except IndexError:
-                # This question is broken! Log it and add it to the guide.
-                print(f"!!! DATA ERROR: Question ID {question.id} has an invalid correct_index.")
-                wrong_questions.append(question)
-                continue
-        
-        if not wrong_questions:
-            print("FUNCTION: No wrong questions, nothing to send.")
-            return
-
-        # 2. Generate AI Prompt
-        print(f"FUNCTION: Generating AI prompt for {student_name}")
-        prompt_text = "The following are questions a student answered incorrectly:\n\n"
-        for q in wrong_questions:
-            prompt_text += f"- Question: {q.text}\n"
-        
-        prompt_text += (
-            "\nPlease generate exactly five practice questions based on the topics from the questions above.\n\n"
-            "For EACH of the five questions, you MUST provide the following in plain text:\n"
-            "1. A 'Fundamental Topic' title (e.g., 'Fundamental Topic: Newton's Second Law').\n"
-            "2. The 'Practice Question' text (e.g., 'Practice Question: What is...').\n"
-            "3. Four multiple-choice options (labeled A), B), C), D)).\n"
-            "4. The 'Correct Answer' (e.g., 'Correct Answer: A').\n\n"
-            "IMPORTANT: The entire response must be plain text only. Do not use Markdown (no ##, *, etc.)."
-            "Format each question clearly with these labels."
-        )
-       
-        
-        # 3. Call the AI Model
-        ai_response = model.generate_content(prompt_text)
-        study_guide_text = ai_response.text
-        print("FUNCTION: AI content received.")
-
-        # 4. Parse and Create PDF
-        practice_questions_data = parse_study_guide_text(study_guide_text)
-        pdf = FPDF()
-        pdf.add_page()
-        
-        try:
-                pdf.set_font("helvetica", size=12)
-        except RuntimeError:
-                print("Warning: Using default PDF font, Unicode characters might not render correctly.")
-                pdf.set_font("helvetica", size=12) 
-
-        # --- Write content to PDF ---
-        # Title
-        pdf.set_font(style='B', size=16)
-        pdf.cell(0, 10, f"Study Guide for: {quiz.title}".encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
-        pdf.ln(5) 
-
-        # Student Name
-        pdf.set_font(style='', size=12)
-        pdf.cell(0, 10, f"Student: {student_name}".encode('latin-1', 'replace').decode('latin-1'), ln=True)
-        pdf.ln(10)
-
-        # --- REMOVED: Core Topics section ---
-
-        # --- UPDATED: Practice Questions section ---
-        pdf.set_font(style='B', size=14)
-        pdf.cell(0, 10, "Practice Questions".encode('latin-1', 'replace').decode('latin-1'), ln=True)
-        pdf.set_font(style='', size=12)
-        pdf.ln(5) # Add a little space before the first question
-
-        for i, pq in enumerate(practice_questions_data):
-            # --- ADDED: Fundamental Topic ---
-            pdf.set_font(style='B', size=12) # Bold topic
-            pdf.multi_cell(0, 5, f"{i + 1}. Fundamental Topic: {pq['topic']}".encode('latin-1', 'replace').decode('latin-1'))
-            pdf.ln(2)
-
-            # --- Question Text ---
-            pdf.set_font(style='', size=12) # Regular question text
-            pdf.multi_cell(0, 5, f"   Question: {pq['text']}".encode('latin-1', 'replace').decode('latin-1'))
-            pdf.ln(2) 
-            
-            # --- Options ---
-            options_text = ""
-            option_labels = ['A', 'B', 'C', 'D']
-            for j, option in enumerate(pq['options']):
-                options_text += f"      {option_labels[j]}) {option}\n"
-            pdf.multi_cell(0, 5, options_text.strip().encode('latin-1', 'replace').decode('latin-1'))
-            pdf.ln(2)
-
-            # --- ADDED: Correct Answer ---
-            pdf.set_text_color(0, 128, 0) # Green color for answer
-            pdf.set_font(style='B')
-            pdf.cell(0, 5, f"   Correct Answer: {pq['answer']}".encode('latin-1', 'replace').decode('latin-1'), ln=True)
-            pdf.set_text_color(0, 0, 0) # Reset color to black
-            pdf.set_font(style='')
-            pdf.ln(8) # Space between questions
-
-        # --- Save PDF to temp file and email (Same as before) ---
-        with tempfile.TemporaryDirectory() as tempdir:
-            pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
-            pdf.output(pdf_filename) # Save the PDF
-
-        print("FUNCTION: PDF created.")
-        
-        # 5. Send the Email (with bug fix)
-        with tempfile.TemporaryDirectory() as tempdir:
-            pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
-            # pdf.output(pdf_filename) # (assuming your PDF code is here)
-
-            email = EmailMessage(
-                subject=f"Your Personalized Study Guide for '{quiz.title}'",
-                body=f"Hello {student_name},\n\nHere is your study guide...",
-                
-
-                from_email=settings.DEFAULT_FROM_EMAIL,  # <-- Use the verified sender
-                
-                to=[student_email],
-            )
-            email.attach_file(pdf_filename)
-            email.send() 
-            
-            print(f"FUNCTION: Successfully sent guide to {student_email}")
-
-    except Exception as e:
-        # This log will now show the *real* error (e.g., from the AI, or PDF)
-        print(f"!!! FUNCTION FAILED: {e}")
-
 def submit_quiz_view(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request method'}, status=405)
 
+    # THIS IS THE ALL-IN-ONE FUNCTION
+    # The 'background' logic is now built in.
+    
     try:
+        # 1. Get all the data from the request
         data = json.loads(request.body)
         quiz = Quiz.objects.get(access_code=data.get('access_code'))
         student_name = data.get('name')
         student_email = data.get('email')
         student_answers = data.get('answers', {})
 
+        # 2. Score the quiz and find wrong answers
         score = 0
-        has_wrong_answers = False
+        wrong_questions = []
         questions = list(quiz.questions.all())
 
-        # --- REFACTORED SCORING AND CHECKING LOOP ---
         for i, question in enumerate(questions):
             submitted_answer_text = student_answers.get(str(i))
             
             try:
-                # --- THIS IS THE FIX ---
-                # 1. Try to get the correct answer text
+                # --- FIX #1: Handles bad data (like Question 44) ---
                 correct_answer_text = question.options[question.correct_index]
                 
-                # 2. Compare it to the submitted answer
                 if submitted_answer_text == correct_answer_text:
                     score += 1
                 else:
-                    # This is True for a wrong answer OR a skipped answer (None)
-                    has_wrong_answers = True 
+                    wrong_questions.append(question)
             
             except IndexError:
-                # --- THIS IS THE FIX ---
-                # This question is broken in the database!
-                # We log the error so we can fix it later,
-                # mark it as "wrong" (to trigger the study guide),
-                # and continue the loop without crashing.
-                print(f"!!! DATA ERROR: Question ID {question.id} has an invalid correct_index.")
-                has_wrong_answers = True
-                continue
-            except Exception as e:
-                # Catch any other unexpected errors with this question
-                print(f"!!! UNKNOWN QUESTION ERROR: Question ID {question.id}, Error: {e}")
-                has_wrong_answers = True
+                # If a question is broken, log it and add it to the guide
+                print(f"!!! DATA ERROR: Question ID {question.id} has invalid index.")
+                wrong_questions.append(question)
                 continue
 
-        # --- END OF REFACTORED LOOP ---
-
-        # 1. Save submission (now with the correct score)
+        # 3. Save the submission to the database
         new_submission = Submission.objects.create(
             quiz=quiz,
             student_name=student_name,
@@ -431,25 +285,63 @@ def submit_quiz_view(request):
             answers=student_answers,
             score=score
         )
-
-        # 2. Call the background task (if needed)
-        if has_wrong_answers:
-            # Remember to use .delay() or .schedule() for django-background-tasks
-            # process_and_send_guide.delay(new_submission.id) # <-- Example
-            
-            # For now, just calling it directly as in your code:
-            process_and_send_guide(new_submission.id) 
-            
-            message = 'Submission saved! Your study guide is being generated and will be emailed to you shortly.'
-        else:
-            message = 'Submission saved! Great job!'
         
-        # 3. Return IMMEDIATE success
+        # 4. Check if we need to send a guide
+        if not wrong_questions:
+            print("VIEW: No wrong answers. Sending success.")
+            return JsonResponse({'status': 'success', 'message': 'Submission saved! Great job!'})
+
+        # --- 5. START STUDY GUIDE LOGIC ---
+        print(f"VIEW: Generating AI prompt for {student_name}")
+        # (Your prompt logic here...)
+        prompt_text = "The following are questions a student answered incorrectly:\n\n"
+        for q in wrong_questions:
+             prompt_text += f"- Question: {q.text}\n"
+        prompt_text += "\nPlease generate exactly *five multiple choice questions* and nothing else no header, no introduction, just multiple choice questions..."
+        
+        # 6. Call the AI Model
+        ai_response = model.generate_content(prompt_text)
+        study_guide_text = ai_response.text
+        print("VIEW: AI content received.")
+
+        # 7. Create PDF
+        pdf = FPDF() 
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, txt=f"Study Guide for {quiz.title}", ln=True, align='C')
+        pdf.multi_cell(0, 10, txt=study_guide_text)
+        print("VIEW: PDF created.")
+        
+        # --- 8. SEND THE EMAIL (This is the part that is failing) ---
+        with tempfile.TemporaryDirectory() as tempdir:
+            pdf_filename = os.path.join(tempdir, 'study_guide.pdf')
+            pdf.output(pdf_filename)
+
+            print(f"VIEW: Sending email to {student_email} from {settings.DEFAULT_FROM_EMAIL}...")
+
+            email = EmailMessage(
+                subject=f"Your Personalized Study Guide for '{quiz.title}'",
+                body=f"Hello {student_name},\n\nHere is your study guide...",
+                
+                # --- FIX #2: Uses your verified email from settings.py ---
+                from_email=settings.DEFAULT_FROM_EMAIL, 
+                
+                to=[student_email],
+            )
+            email.attach_file(pdf_filename)
+            
+            # If this line fails, the 'except' block below will catch it
+            email.send() 
+            
+            print(f"VIEW: Successfully sent guide to {student_email}")
+
+        message = 'Submission saved! Your study guide has been emailed to you.'
         return JsonResponse({'status': 'success', 'message': message})
 
     except Quiz.DoesNotExist:
         return JsonResponse({'error': 'Quiz not found'}, status=404)
     except Exception as e:
-        # This will now only catch *other* errors, not the IndexError
+        # --- THIS WILL FINALLY CATCH THE REAL ERROR ---
+        # Your terminal will now show 500 and the Brevo error
         print(f"!!! SUBMISSION VIEW ERROR: {e}") 
-        return JsonResponse({'error': 'An internal error occurred.'}, status=500)
+        return JsonResponse({'error': f'An internal error occurred: {e}'}, status=500)

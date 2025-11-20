@@ -102,8 +102,11 @@
             margin-top: 2rem;
         }
 
-        button {
-            padding: 0.8rem 2rem;
+        /* Submit Button Styles */
+        #submit-btn {
+            display: block;
+            margin: 2rem auto;
+            padding: 15px 30px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
@@ -112,10 +115,18 @@
             background: #facc15;
             color: #111;
             transition: background 0.2s;
+            min-width: 200px;
         }
 
-        button:hover {
+        #submit-btn:hover {
             background: #eab308;
+        }
+
+        /* Disabled state for button */
+        #submit-btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+            opacity: 0.8;
         }
 
         #confirmation {
@@ -125,6 +136,30 @@
             border-radius: 8px;
             text-align: center;
             display: none; /* Hidden by default */
+            margin-top: 2rem;
+        }
+
+        /* The loading spinner */
+        .spinner {
+            display: none; /* Hidden by default */
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,0.1);
+            border-radius: 50%;
+            border-top-color: #000;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Align text and spinner */
+        .btn-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
     </style>
 </head>
@@ -148,13 +183,17 @@
 
     <main id="quizContainer"></main>
 
-    <div class="controls">
-        <button id="submitBtn">Submit</button>
-    </div>
+    <button id="submit-btn" onclick="submitQuiz()">
+        <div class="btn-content">
+            <div id="loading-spinner" class="spinner"></div>
+            <span id="btn-text">Submit Quiz</span>
+        </div>
+    </button>
 
     <div id="confirmation">
         <h2>✅ Thank you for submitting!</h2>
         <p>Your answers have been recorded.</p>
+        <p>Check your email shortly for your personalized study guide.</p>
     </div>
 </div>
 
@@ -190,14 +229,33 @@
         }
     });
 
-    // 4. HANDLE QUIZ SUBMISSION
-    document.getElementById("submitBtn").addEventListener("click", () => {
+    // 4. THE SUBMIT FUNCTION (Now includes Loading Logic)
+    function submitQuiz() {
+        // --- UI ELEMENTS ---
+        const btn = document.getElementById('submit-btn');
+        const spinner = document.getElementById('loading-spinner');
+        const btnText = document.getElementById('btn-text');
+
+        // --- START LOADING STATE ---
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+        btnText.innerText = 'Generating Study Guide...';
+
+        // --- VALIDATION ---
+        // Helper to reset button if validation fails
+        function stopLoading() {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            btnText.innerText = 'Submit Quiz';
+        }
+
         // Get User Info
         const name = document.getElementById('studentName').value.trim();
         const email = document.getElementById('studentEmail').value.trim();
 
         if (!name || !email) {
             alert('Please enter your name and email.');
+            stopLoading(); // Reset button
             return;
         }
 
@@ -213,6 +271,7 @@
 
         if (Object.keys(answers).length !== questions.length) {
             alert('Please answer all questions before submitting.');
+            stopLoading(); // Reset button
             return;
         }
 
@@ -237,20 +296,25 @@
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                // Hide the quiz and show the confirmation message
+                // --- SUCCESS ---
+                // Hide inputs and button, show confirmation
                 document.getElementById("userInfo").style.display = "none";
-                document.querySelector("main").style.display = "none";
-                document.querySelector(".controls").style.display = "none";
+                document.getElementById("quizContainer").style.display = "none";
+                document.getElementById("submit-btn").style.display = "none"; // Hide the button completely
                 document.getElementById("confirmation").style.display = "block";
             } else {
-                alert('There was an error submitting your quiz: ' + data.error);
+                // --- LOGIC ERROR (e.g. Quiz not found) ---
+                alert('Error: ' + data.error);
+                stopLoading(); // Allow them to try again
             }
         })
         .catch(error => {
+            // --- NETWORK ERROR ---
             console.error('Submission Error:', error);
             alert('A network error occurred. Please try again.');
+            stopLoading(); // Allow them to try again
         });
-    });
+    }
 </script>
 
 </body>
