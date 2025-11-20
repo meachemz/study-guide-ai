@@ -1,21 +1,26 @@
 import os
+import sys
 import django
-from django.conf import settings
 
-# 1. Tell the script where your settings.py is located
-# Based on your logs, your project folder is named 'config'
+# --- ADD THESE LINES ---
+# This gets the folder where this script lives (quiz_app)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# This gets the parent folder (the project root)
+parent_dir = os.path.dirname(current_dir)
+# This adds the parent folder to Python's "search list" so it can find 'config'
+sys.path.append(parent_dir)
+# -----------------------
+
+# Now this will work because Python knows where to look
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
-
-# 2. Boot up Django
 django.setup()
 
-# 3. NOW you can import models (do not move these lines up!)
 from django.contrib.auth.models import User
 
-# 4. The logic to create the user
+# Your User Creation Logic
 if not User.objects.filter(username='newuser').exists():
     print("Creating superuser...")
-    User.objects.create_superuser('newuser', 'securepassword123')
+    User.objects.create_superuser('newuser', 'admin@example.com', 'securepassword123')
     print("Superuser created.")
 else:
     print("Superuser already exists.")
