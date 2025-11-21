@@ -34,8 +34,9 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 EMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
 
+#API HARDCODED CHANGE TO ENV!!!!!!!!
 ANYMAIL = {
-    "BREVO_API_KEY": "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",
+    "BREVO_API_KEY": "CHANGE_THIS",
 }
 
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
@@ -48,6 +49,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+#API HARDCODED CHANGE TO ENV!!!!!!!!
 SECRET_KEY = 'django-insecure-uj%p2dtb595l9q3tntxv&oe0zz58cdy7t08tz+4v2rqlxn#xcj'
 
 # SECURITY WARNING: don't run with debug turned on in production!
