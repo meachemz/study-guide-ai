@@ -36,7 +36,7 @@ EMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
 
 #API HARDCODED CHANGE TO ENV!!!!!!!!
 ANYMAIL = {
-    "BREVO_API_KEY": "CHANGE_THIS",
+    "BREVO_API_KEY":os.getenv("BREVO_API_KEY"),
 }
 
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
@@ -50,7 +50,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 #API HARDCODED CHANGE TO ENV!!!!!!!!
-SECRET_KEY = ''
+SECRET_KEY = os.getenv("D_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
