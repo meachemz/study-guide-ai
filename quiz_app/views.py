@@ -22,7 +22,12 @@ from django.contrib.auth.models import User
 
 # --- AI Model Configuration ---
 genai.configure(api_key=settings.GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash-lite')
+
+#Transport to use less memory
+model = genai.GenerativeModel(
+    model_name="gemini-2.0-flash-lite",
+    transport="rest"
+)
 
 ##TESTING PURPOSES
 def create_user():
